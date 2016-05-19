@@ -594,6 +594,8 @@ MPU9250::read(struct file *filp, char *buffer, size_t buflen)
 		return -ENOSPC;
 	}
 
+	//powerain
+	//::printf("\nsssssss%d\n", _call_interval);
 	/* if automatic measurement is not enabled, get a fresh measurement into the buffer */
 	if (_call_interval == 0) {
 		_accel_reports->flush();
@@ -752,6 +754,7 @@ MPU9250::gyro_read(struct file *filp, char *buffer, size_t buflen)
 		return -ENOSPC;
 	}
 
+	//::printf("\nsssssss%d\n", _call_interval);
 	/* if automatic measurement is not enabled, get a fresh measurement into the buffer */
 	if (_call_interval == 0) {
 		_gyro_reports->flush();

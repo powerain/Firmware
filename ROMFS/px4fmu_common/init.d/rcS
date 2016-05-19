@@ -328,6 +328,10 @@ then
 	# Sensors System (start before Commander so Preflight checks are properly run)
 	#
 	sh /etc/init.d/rc.sensors
+	#if mpu9250 -R 2 start
+	#then
+	#fi
+	#powerain
 
 	# Needs to be this early for in-air-restarts
 	if [ $OUTPUT_MODE == hil ]
