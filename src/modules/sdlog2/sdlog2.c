@@ -352,6 +352,9 @@ int sdlog2_main(int argc, char *argv[])
 		}
 
 		main_thread_should_exit = false;
+		
+		//FIXME
+		task_priority = SCHED_PRIORITY_DEFAULT;
 		deamon_task = px4_task_spawn_cmd("sdlog2",
 						 SCHED_DEFAULT,
 						 task_priority,
@@ -950,10 +953,10 @@ bool copy_if_updated_multi(orb_id_t topic, int multi_instance, int *handle, void
 }
 //#endif
 
-	//FIXME:使用union节省空间
-	struct accel_report buf_acc;
-	struct gyro_report buf_gyr;
-	struct mag_report buf_mag;
+//FIXME:使用union节省空间
+struct accel_report buf_acc;
+struct gyro_report buf_gyr;
+struct mag_report buf_mag;
 int sdlog2_thread_main(int argc, char *argv[])
 {
 	/* default log rate: 50 Hz */
@@ -1153,48 +1156,12 @@ int sdlog2_thread_main(int argc, char *argv[])
 	bool record_replay_log = (bool)tmp;
 
 	/* warning! using union here to save memory, elements should be used separately! */
-	union {
-		struct vehicle_command_s cmd;
-		struct sensor_combined_s sensor;
-		struct vehicle_attitude_s att;
-		struct vehicle_attitude_setpoint_s att_sp;
-		struct vehicle_rates_setpoint_s rates_sp;
-		struct actuator_outputs_s act_outputs;
-		struct actuator_controls_s act_controls;
-		struct actuator_controls_s act_controls1;
-		struct vehicle_local_position_s local_pos;
-		struct vehicle_local_position_setpoint_s local_pos_sp;
-		struct vehicle_global_position_s global_pos;
-		struct position_setpoint_triplet_s triplet;
-		struct att_pos_mocap_s att_pos_mocap;
-		struct vision_position_estimate_s vision_pos;
-		struct optical_flow_s flow;
-		struct rc_channels_s rc;
-		struct differential_pressure_s diff_pres;
-		struct airspeed_s airspeed;
-		struct esc_status_s esc;
-		struct vehicle_global_velocity_setpoint_s global_vel_sp;
-		struct battery_status_s battery;
-		struct telemetry_status_s telemetry;
-		struct distance_sensor_s distance_sensor;
-		struct estimator_status_s estimator_status;
-		struct tecs_status_s tecs_status;
-		struct system_power_s system_power;
-		struct servorail_status_s servorail_status;
-		struct satellite_info_s sat_info;
-		struct wind_estimate_s wind_estimate;
-		struct encoders_s encoders;
-		struct vtol_vehicle_status_s vtol_status;
-		struct time_offset_s time_offset;
-		struct mc_att_ctrl_status_s mc_att_ctrl_status;
-		struct control_state_s ctrl_state;
-		struct ekf2_innovations_s innovations;
-		struct camera_trigger_s camera_trigger;
-		struct ekf2_replay_s replay;
-		struct vehicle_land_detected_s land_detected;
-	} buf;
+//	union {
+//		struct vehicle_command_s cmd;
+//		struct sensor_combined_s sensor;
+//	} buf;
 
-	memset(&buf, 0, sizeof(buf));
+//	memset(&buf, 0, sizeof(buf));
 
 	/* log message buffer: header + body */
 #pragma pack(push, 1)
@@ -1211,98 +1178,15 @@ int sdlog2_thread_main(int argc, char *argv[])
 #pragma pack(pop)
 	memset(&log_msg.body, 0, sizeof(log_msg.body));
 
+//FIXME
 	struct {
-		int cmd_sub;
-		int status_sub;
-		int vtol_status_sub;
-		int sensor_sub;
-		int att_sub;
-		int att_sp_sub;
-		int rates_sp_sub;
-		int act_outputs_sub;
-		int act_outputs_1_sub;
-		int act_controls_sub;
-		int act_controls_1_sub;
-		int local_pos_sub;
-		int local_pos_sp_sub;
-		int global_pos_sub;
-		int triplet_sub;
 		int gps_pos_sub;
-		int sat_info_sub;
-		int att_pos_mocap_sub;
-		int vision_pos_sub;
-		int flow_sub;
-		int rc_sub;
-		int airspeed_sub;
-		int esc_sub;
-		int global_vel_sp_sub;
-		int battery_sub;
-		int telemetry_subs[ORB_MULTI_MAX_INSTANCES];
-		int distance_sensor_sub;
-		int estimator_status_sub;
-		int tecs_status_sub;
-		int system_power_sub;
-		int servorail_status_sub;
-		int wind_sub;
-		int encoders_sub;
-		int tsync_sub;
-		int mc_att_ctrl_status_sub;
-		int ctrl_state_sub;
-		int innov_sub;
-		int cam_trig_sub;
-		int replay_sub;
-		int land_detected_sub;
-		int commander_state_sub;
 	} subs;
 	
 	int gps_sub = -1;
 	bool gps_pos_updated = false;
 
-	subs.cmd_sub = -1;
-	subs.status_sub = -1;
-	subs.vtol_status_sub = -1;
 	subs.gps_pos_sub = -1;
-	subs.sensor_sub = -1;
-	subs.att_sub = -1;
-	subs.att_sp_sub = -1;
-	subs.rates_sp_sub = -1;
-	subs.act_outputs_sub = -1;
-	subs.act_outputs_1_sub = -1;
-	subs.act_controls_sub = -1;
-	subs.act_controls_1_sub = -1;
-	subs.local_pos_sub = -1;
-	subs.local_pos_sp_sub = -1;
-	subs.global_pos_sub = -1;
-	subs.triplet_sub = -1;
-	subs.att_pos_mocap_sub = -1;
-	subs.vision_pos_sub = -1;
-	subs.flow_sub = -1;
-	subs.rc_sub = -1;
-	subs.airspeed_sub = -1;
-	subs.esc_sub = -1;
-	subs.global_vel_sp_sub = -1;
-	subs.battery_sub = -1;
-	subs.distance_sensor_sub = -1;
-	subs.estimator_status_sub = -1;
-	subs.tecs_status_sub = -1;
-	subs.system_power_sub = -1;
-	subs.servorail_status_sub = -1;
-	subs.wind_sub = -1;
-	subs.tsync_sub = -1;
-	subs.mc_att_ctrl_status_sub = -1;
-	subs.ctrl_state_sub = -1;
-	subs.encoders_sub = -1;
-	subs.innov_sub = -1;
-	subs.cam_trig_sub = -1;
-	subs.replay_sub = -1;
-	subs.land_detected_sub = -1;
-	subs.commander_state_sub = -1;
-
-	for (unsigned i = 0; i < ORB_MULTI_MAX_INSTANCES; i++) {
-		subs.telemetry_subs[i] = -1;
-	}
-
-	subs.sat_info_sub = -1;
 
 	/* initialize thread synchronization */
 	pthread_mutex_init(&logbuffer_mutex, NULL);
@@ -1333,7 +1217,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	if (record_replay_log) {
 
 	} else {
-		subs.sensor_sub = orb_subscribe(ORB_ID(sensor_combined));
+//		subs.sensor_sub = orb_subscribe(ORB_ID(sensor_combined));
 //		fds[0].fd = subs.sensor_sub;
 //		fds[0].events = POLLIN;
 		// TODO Remove hardcoded rate!
@@ -1375,23 +1259,29 @@ int sdlog2_thread_main(int argc, char *argv[])
 	int size_ba = sizeof(buf_acc);
 	int size_bg = sizeof(buf_gyr);
 	int size_bm = sizeof(buf_mag);
-//powerain end
-/***************************************************************************************/
-	printf("log packet size is %d\n", LOG_PACKET_SIZE(IMU));
-	printf("size of log_msg.body is %d\n", sizeof(log_msg.body));
-	printf("size of float is %d\n", sizeof(float));
-	
-	while (!main_thread_should_exit) {
-/***************************************************************************************/
-//powerain
-		/* wait at least 100ms, sensor should have data after no more than 20ms */
-		usleep(1000);
 
+//	printf("log packet size is %d\n", LOG_PACKET_SIZE(IMU));
+//	printf("size of log_msg.body is %d\n", sizeof(log_msg.body));
+//	printf("size of float is %d\n", sizeof(float));
+
+//	uint64_t t0, t1, t2, t3, t4, t5, t6, t7, t8;
+//	t0 = t1 = t2 = t3 = t4 = t5 = t6 = t7 = t8 = 0;
+
+	while (!main_thread_should_exit) 
+	{
+
+		/* wait at least 100ms, sensor should have data after no more than 20ms */
+		usleep(900);
+
+//t0 = hrt_absolute_time();
 		ret = px4_read(fd_acc, &buf_acc, size_ba);
+//t1 = hrt_absolute_time();
 		if (ret != size_ba) {
 //			printf("\tACCEL: read1 fail (%d)\n", ret);
 			continue;
 		}
+//printf("acc DT:%lld  x:%f  y:%f  z:%f  x_integral:%f  y:%f  z:%f  \n", 
+//	buf_acc.integral_dt, (double)buf_acc.x, (double)buf_acc.y, (double)buf_acc.z);
 		
 		ret = px4_read(fd_gyr, &buf_gyr, size_bg);
 		if (ret != size_bg) {
@@ -1405,8 +1295,10 @@ int sdlog2_thread_main(int argc, char *argv[])
 			continue;
 		}
 
+//t2 = hrt_absolute_time();
+//printf("\tTime is: %lld\t%lld\t%lld\n", t3, t1, t0);
 		if (!logging_enabled) {
-//fixme powerain
+//FIXME powerain
 //			continue;
 		}
 		//所有的传感器数据读正确，拷贝数据
@@ -1423,29 +1315,31 @@ int sdlog2_thread_main(int argc, char *argv[])
 		log_msg.body.log_IMU.time_acc = buf_acc.timestamp;
 		log_msg.body.log_IMU.time_gyr = buf_gyr.timestamp;
 		log_msg.body.log_IMU.time_mag = buf_mag.timestamp;
-
+//		printf("\tTime stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
+#undef DEBUG_PRN
 #ifdef DEBUG_PRN
 //#if 0
-		printf("\tACCEL accel: x:%X\ty:%X\tz:%X m/s^2\n", *((int *)&(buf_acc.x)), *((int *)&(buf_acc.y)), *((int *)&(buf_acc.z)));
-		printf("\tGYRO rates: x:%X\ty:%X\tz:%X rad/s\n", *((int *)&(buf_gyr.x)), *((int *)&(buf_gyr.y)), *((int *)&(buf_gyr.z)));
+		printf("\tACCEL accel: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_acc.x)), *((int *)&(buf_acc.y)), *((int *)&(buf_acc.z)));
+		printf("\tGYRO rates: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_gyr.x)), *((int *)&(buf_gyr.y)), *((int *)&(buf_gyr.z)));
 		printf("\tMAG values: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_mag.x)), *((int *)&(buf_mag.y)), *((int *)&(buf_mag.z)));
 		printf("\tTime stamp is: %llX\t%llX\t%llX\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
 #endif
 
 		LOGBUFFER_WRITE_AND_COUNT(IMU);
 
+//t3 = hrt_absolute_time();
 		gps_pos_updated = copy_if_updated(ORB_ID(vehicle_gps_position), &gps_sub, &buf_gps_pos);
 		if (gps_pos_updated) 
 		{
 #ifdef DEBUG_PRN
-			printf("\tGPS Time stamp is: %llX\n", buf_gps_pos.timestamp_position);
+			printf("\tGPS Time stamp is: %llX\tUTC Time is: %llX\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
 			printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
 #endif			
 			//if(buf_gps_pos.satellites_used > 0)
 			{
 				log_msg.msg_type 		= LOG_GPS_MSG;
 				log_msg.body.log_GPS.time_stamp = buf_gps_pos.timestamp_position;
-				log_msg.body.log_GPS.time_gps	= 0;
+				log_msg.body.log_GPS.time_gps	= buf_gps_pos.time_utc_usec;
 				log_msg.body.log_GPS.lat	= buf_gps_pos.lat;
 				log_msg.body.log_GPS.lon	= buf_gps_pos.lon;
 				log_msg.body.log_GPS.sats	= buf_gps_pos.satellites_used;
@@ -1458,8 +1352,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			printf("\tGPS pos is not update\n");
 #endif	
 		}
-//powerain end
-/***************************************************************************************/
+//t4 = hrt_absolute_time();
 		//powerain 这一部分去掉
 		if ((poll_counter + 1) % poll_to_logging_factor == 0) {
 			poll_counter = 0;
@@ -1468,7 +1361,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			poll_counter++;
 //			continue;
 		}
-
+//t5 = hrt_absolute_time();
 		pthread_mutex_lock(&logbuffer_mutex);
 
 		/* signal the other thread new data, but not yet unlock */
@@ -1476,9 +1369,14 @@ int sdlog2_thread_main(int argc, char *argv[])
 			/* only request write if several packets can be written at once */
 			pthread_cond_signal(&logbuffer_cond);
 		}
-
+//t6 = hrt_absolute_time();
 		/* unlock, now the writer thread may run */
 		pthread_mutex_unlock(&logbuffer_mutex);
+//t7 = hrt_absolute_time();
+//printf("Time: %lld  %lld  %lld  %lld  %lld  %lld  %lld  %lld  %lld\n", t0, t1, t2, t3, t4, t5, t6, t7, t8);
+printf("\tSensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
+printf("DT_AC: %lld  DT_GY: %lld\n", buf_acc.integral_dt, buf_gyr.integral_dt);
+//t8 = hrt_absolute_time();
 	}
 
 	if (logging_enabled) {
@@ -1497,7 +1395,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	px4_close(fd_acc);
 	px4_close(fd_gyr);
 	px4_close(fd_mag);
-//powerain end
+
 	return 0;
 }
 
