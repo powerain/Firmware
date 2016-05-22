@@ -953,7 +953,7 @@ bool copy_if_updated_multi(orb_id_t topic, int multi_instance, int *handle, void
 }
 //#endif
 
-//FIXME:Ê¹ÓÃunion½ÚÊ¡¿Õ¼ä
+//FIXME:ä½¿ç”¨unionèŠ‚çœç©ºé—´
 struct accel_report buf_acc;
 struct gyro_report buf_gyr;
 struct mag_report buf_mag;
@@ -1301,7 +1301,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 //FIXME powerain
 //			continue;
 		}
-		//ËùÓĞµÄ´«¸ĞÆ÷Êı¾İ¶ÁÕıÈ·£¬¿½±´Êı¾İ
+		//æ‰€æœ‰çš„ä¼ æ„Ÿå™¨æ•°æ®è¯»æ­£ç¡®ï¼Œæ‹·è´æ•°æ®
 		log_msg.msg_type = LOG_IMU_MSG;
 		log_msg.body.log_IMU.acc_x    = buf_acc.x;
 		log_msg.body.log_IMU.acc_y    = buf_acc.y;
@@ -1353,7 +1353,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 #endif	
 		}
 //t4 = hrt_absolute_time();
-		//powerain ÕâÒ»²¿·ÖÈ¥µô
+		//powerain è¿™ä¸€éƒ¨åˆ†å»æ‰
 		if ((poll_counter + 1) % poll_to_logging_factor == 0) {
 			poll_counter = 0;
 		} else {
