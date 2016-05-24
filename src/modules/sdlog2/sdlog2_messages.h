@@ -100,7 +100,7 @@ struct log_IMU_s {
 	float temp_mag;
 };
 */
-struct log_IMU_s {
+/* struct log_IMU_s {
 	float acc_x;
 	float acc_y;
 	float acc_z;
@@ -113,6 +113,37 @@ struct log_IMU_s {
 	uint64_t time_acc;
 	uint64_t time_gyr;
 	uint64_t time_mag;
+}; */
+struct log_IMU_s {
+	float acc_x;
+	float acc_y;
+	float acc_z;
+	float gyr_x;
+	float gyr_y;
+	float gyr_z;
+	float mag_x;
+	float mag_y;
+	float mag_z;
+	
+	float acc_scaling;
+	float gyr_scaling;
+	float mag_scaling;
+
+	uint64_t acc_dt;
+	uint64_t gyr_dt;
+	uint64_t acc_time;
+	uint64_t gyr_time;
+	uint64_t mag_time;
+
+	int16_t acc_x_raw;
+	int16_t acc_y_raw;
+	int16_t acc_Z_raw;
+	int16_t gyr_x_raw;
+	int16_t gyr_y_raw;
+	int16_t gyr_Z_raw;
+	int16_t mag_x_raw;
+	int16_t mag_y_raw;
+	int16_t mag_Z_raw;
 };
 
 /* --- SENS - OTHER SENSORS --- */

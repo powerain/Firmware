@@ -137,6 +137,9 @@
 #include "sdlog2_format.h"
 #include "sdlog2_messages.h"
 
+#include <drivers/drv_led.h>
+extern void led_toggle(int led);
+extern void led_on(int led);
 #define DEBUG_PRN
 #define PX4_EPOCH_SECS 1234567890L
 
@@ -1260,8 +1263,8 @@ int sdlog2_thread_main(int argc, char *argv[])
 	int size_bg = sizeof(buf_gyr);
 	int size_bm = sizeof(buf_mag);
 
-//	printf("log packet size is %d\n", LOG_PACKET_SIZE(IMU));
-//	printf("size of log_msg.body is %d\n", sizeof(log_msg.body));
+	printf("log packet size is %d\n", LOG_PACKET_SIZE(IMU));
+	printf("size of log_msg.body is %d\n", sizeof(log_msg.body));
 //	printf("size of float is %d\n", sizeof(float));
 
 //	uint64_t t0, t1, t2, t3, t4, t5, t6, t7, t8;
@@ -1306,15 +1309,32 @@ int sdlog2_thread_main(int argc, char *argv[])
 		log_msg.body.log_IMU.acc_x    = buf_acc.x;
 		log_msg.body.log_IMU.acc_y    = buf_acc.y;
 		log_msg.body.log_IMU.acc_z    = buf_acc.z;
-		log_msg.body.log_IMU.gyro_x   = buf_gyr.x;
-		log_msg.body.log_IMU.gyro_y   = buf_gyr.y;
-		log_msg.body.log_IMU.gyro_z   = buf_gyr.z;
+		log_msg.body.log_IMU.gyr_x   = buf_gyr.x;
+		log_msg.body.log_IMU.gyr_y   = buf_gyr.y;
+		log_msg.body.log_IMU.gyr_z   = buf_gyr.z;
 		log_msg.body.log_IMU.mag_x    = buf_mag.x;
 		log_msg.body.log_IMU.mag_y    = buf_mag.y;
 		log_msg.body.log_IMU.mag_z    = buf_mag.z;
-		log_msg.body.log_IMU.time_acc = buf_acc.timestamp;
-		log_msg.body.log_IMU.time_gyr = buf_gyr.timestamp;
-		log_msg.body.log_IMU.time_mag = buf_mag.timestamp;
+		
+		log_msg.body.log_IMU.acc_scaling = buf_acc.scaling;
+		log_msg.body.log_IMU.gyr_scaling = buf_gyr.scaling;
+		log_msg.body.log_IMU.mag_scaling = buf_mag.scaling;
+		
+		log_msg.body.log_IMU.acc_dt = buf_acc.integral_dt;
+		log_msg.body.log_IMU.gyr_dt = buf_gyr.integral_dt;
+		log_msg.body.log_IMU.acc_time = buf_acc.timestamp;
+		log_msg.body.log_IMU.gyr_time = buf_gyr.timestamp;
+		log_msg.body.log_IMU.mag_time = buf_mag.timestamp;
+		
+		log_msg.body.log_IMU.acc_x_raw = buf_acc.x_raw;
+		log_msg.body.log_IMU.acc_y_raw = buf_acc.y_raw;
+		log_msg.body.log_IMU.acc_Z_raw = buf_acc.z_raw;
+		log_msg.body.log_IMU.gyr_x_raw = buf_gyr.x_raw;
+		log_msg.body.log_IMU.gyr_y_raw = buf_gyr.y_raw;
+		log_msg.body.log_IMU.gyr_Z_raw = buf_gyr.z_raw;
+		log_msg.body.log_IMU.mag_x_raw = buf_mag.x_raw;
+		log_msg.body.log_IMU.mag_y_raw = buf_mag.y_raw;
+		log_msg.body.log_IMU.mag_Z_raw = buf_mag.z_raw;
 //		printf("\tTime stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
 #undef DEBUG_PRN
 #ifdef DEBUG_PRN
@@ -1322,7 +1342,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		printf("\tACCEL accel: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_acc.x)), *((int *)&(buf_acc.y)), *((int *)&(buf_acc.z)));
 		printf("\tGYRO rates: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_gyr.x)), *((int *)&(buf_gyr.y)), *((int *)&(buf_gyr.z)));
 		printf("\tMAG values: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_mag.x)), *((int *)&(buf_mag.y)), *((int *)&(buf_mag.z)));
-		printf("\tTime stamp is: %llX\t%llX\t%llX\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
+		printf("\tTime stamp is: %llX\t%llX\t%llX\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
 #endif
 
 		LOGBUFFER_WRITE_AND_COUNT(IMU);
@@ -1331,9 +1351,10 @@ int sdlog2_thread_main(int argc, char *argv[])
 		gps_pos_updated = copy_if_updated(ORB_ID(vehicle_gps_position), &gps_sub, &buf_gps_pos);
 		if (gps_pos_updated) 
 		{
-#ifdef DEBUG_PRN
-			printf("\tGPS Time stamp is: %llX\tUTC Time is: %llX\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
-			printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
+//#ifdef DEBUG_PRN
+#if 0
+//			printf("\tGPS Time stamp is: %llX\tUTC Time is: %llX\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
+//			printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
 #endif			
 			//if(buf_gps_pos.satellites_used > 0)
 			{
@@ -1374,9 +1395,15 @@ int sdlog2_thread_main(int argc, char *argv[])
 		pthread_mutex_unlock(&logbuffer_mutex);
 //t7 = hrt_absolute_time();
 //printf("Time: %lld  %lld  %lld  %lld  %lld  %lld  %lld  %lld  %lld\n", t0, t1, t2, t3, t4, t5, t6, t7, t8);
-printf("\tSensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
+//#ifdef DEBUG_PRN
+#if 1
+printf("GPS Time stamp is: %lld\tUTC Time is: %lld\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
+printf("GPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
+printf("Sensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
 printf("DT_AC: %lld  DT_GY: %lld\n", buf_acc.integral_dt, buf_gyr.integral_dt);
+#endif
 //t8 = hrt_absolute_time();
+//led_on(LED_RED);
 	}
 
 	if (logging_enabled) {
@@ -1391,7 +1418,6 @@ printf("DT_AC: %lld  DT_GY: %lld\n", buf_acc.integral_dt, buf_gyr.integral_dt);
 
 	thread_running = false;
 
-//powerain
 	px4_close(fd_acc);
 	px4_close(fd_gyr);
 	px4_close(fd_mag);
