@@ -125,12 +125,10 @@
 #include <version/version.h>
 
 /****************************************************************************/
-//powerain
 #include <drivers/drv_gyro.h>
 #include <drivers/drv_accel.h>
 #include <drivers/drv_mag.h>
 #include <drivers/drv_baro.h>
-//powerain end
 /****************************************************************************/
 
 #include "logbuffer.h"
@@ -140,6 +138,7 @@
 #include <drivers/drv_led.h>
 extern void led_toggle(int led);
 extern void led_on(int led);
+extern void led_off(int led);
 #define DEBUG_PRN
 #define PX4_EPOCH_SECS 1234567890L
 
@@ -258,12 +257,12 @@ static int write_formats(int fd);
 /**
  * Write version message to log file.
  */
-static int write_version(int fd);
+//static int write_version(int fd);
 
 /**
  * Write parameters to log file.
  */
-static int write_parameters(int fd);
+//static int write_parameters(int fd);
 
 static bool file_exist(const char *filename);
 
@@ -622,9 +621,9 @@ static void *logwriter_thread(void *arg)
 	/* write log messages formats, version and parameters */
 	log_bytes_written += write_formats(log_fd);
 
-	log_bytes_written += write_version(log_fd);
+	//log_bytes_written += write_version(log_fd);
 
-	log_bytes_written += write_parameters(log_fd);
+	//log_bytes_written += write_parameters(log_fd);
 
 	fsync(log_fd);
 
@@ -855,6 +854,7 @@ int write_formats(int fd)
 	return written;
 }
 
+#if 0
 int write_version(int fd)
 {
 	/* construct version message */
@@ -911,6 +911,7 @@ int write_parameters(int fd)
 
 	return written;
 }
+#endif
 
 //#if 0
 bool copy_if_updated(orb_id_t topic, int *handle, void *buffer)
@@ -1270,9 +1271,13 @@ int sdlog2_thread_main(int argc, char *argv[])
 //	uint64_t t0, t1, t2, t3, t4, t5, t6, t7, t8;
 //	t0 = t1 = t2 = t3 = t4 = t5 = t6 = t7 = t8 = 0;
 
+//led_on(0);
+//led_on(1);
+led_on(3);
+	int c = 0;
+	bool gps_ok =  false;
 	while (!main_thread_should_exit) 
 	{
-
 		/* wait at least 100ms, sensor should have data after no more than 20ms */
 		usleep(900);
 
@@ -1301,7 +1306,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 //t2 = hrt_absolute_time();
 //printf("\tTime is: %lld\t%lld\t%lld\n", t3, t1, t0);
 		if (!logging_enabled) {
-//FIXME powerain
+//FIXME
 //			continue;
 		}
 		//所有的传感器数据读正确，拷贝数据
@@ -1316,17 +1321,17 @@ int sdlog2_thread_main(int argc, char *argv[])
 		log_msg.body.log_IMU.mag_y    = buf_mag.y;
 		log_msg.body.log_IMU.mag_z    = buf_mag.z;
 		
-		log_msg.body.log_IMU.acc_scaling = buf_acc.scaling;
+		/*log_msg.body.log_IMU.acc_scaling = buf_acc.scaling;
 		log_msg.body.log_IMU.gyr_scaling = buf_gyr.scaling;
 		log_msg.body.log_IMU.mag_scaling = buf_mag.scaling;
 		
 		log_msg.body.log_IMU.acc_dt = buf_acc.integral_dt;
-		log_msg.body.log_IMU.gyr_dt = buf_gyr.integral_dt;
+		log_msg.body.log_IMU.gyr_dt = buf_gyr.integral_dt;*/
 		log_msg.body.log_IMU.acc_time = buf_acc.timestamp;
 		log_msg.body.log_IMU.gyr_time = buf_gyr.timestamp;
 		log_msg.body.log_IMU.mag_time = buf_mag.timestamp;
 		
-		log_msg.body.log_IMU.acc_x_raw = buf_acc.x_raw;
+		/*log_msg.body.log_IMU.acc_x_raw = buf_acc.x_raw;
 		log_msg.body.log_IMU.acc_y_raw = buf_acc.y_raw;
 		log_msg.body.log_IMU.acc_Z_raw = buf_acc.z_raw;
 		log_msg.body.log_IMU.gyr_x_raw = buf_gyr.x_raw;
@@ -1334,7 +1339,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		log_msg.body.log_IMU.gyr_Z_raw = buf_gyr.z_raw;
 		log_msg.body.log_IMU.mag_x_raw = buf_mag.x_raw;
 		log_msg.body.log_IMU.mag_y_raw = buf_mag.y_raw;
-		log_msg.body.log_IMU.mag_Z_raw = buf_mag.z_raw;
+		log_msg.body.log_IMU.mag_Z_raw = buf_mag.z_raw;*/
 //		printf("\tTime stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
 #undef DEBUG_PRN
 #ifdef DEBUG_PRN
@@ -1351,30 +1356,50 @@ int sdlog2_thread_main(int argc, char *argv[])
 		gps_pos_updated = copy_if_updated(ORB_ID(vehicle_gps_position), &gps_sub, &buf_gps_pos);
 		if (gps_pos_updated) 
 		{
-//#ifdef DEBUG_PRN
-#if 0
-//			printf("\tGPS Time stamp is: %llX\tUTC Time is: %llX\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
-//			printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
+#ifdef DEBUG_PRN
+//#if 0
+//#if 1
+			printf("\tGPS Time stamp is: %llX\tUTC Time is: %llX\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
+			printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
 #endif			
-			//if(buf_gps_pos.satellites_used > 0)
+			if(buf_gps_pos.satellites_used > 0)
 			{
-				log_msg.msg_type 		= LOG_GPS_MSG;
+				//led_off(3);
+				//led_toggle(1);
+				gps_ok = true;
+			}
+			 else
+			{
+				 //led_off(1);
+				 gps_ok = false;
+			}
+
+			{
+				log_msg.msg_type 				= LOG_GPS_MSG;
 				log_msg.body.log_GPS.time_stamp = buf_gps_pos.timestamp_position;
 				log_msg.body.log_GPS.time_gps	= buf_gps_pos.time_utc_usec;
-				log_msg.body.log_GPS.lat	= buf_gps_pos.lat;
-				log_msg.body.log_GPS.lon	= buf_gps_pos.lon;
-				log_msg.body.log_GPS.sats	= buf_gps_pos.satellites_used;
+				log_msg.body.log_GPS.lat		= buf_gps_pos.lat;
+				log_msg.body.log_GPS.lon		= buf_gps_pos.lon;
+				log_msg.body.log_GPS.alt		= buf_gps_pos.alt;
+
+				log_msg.body.log_GPS.vel_n  	= buf_gps_pos.vel_n_m_s;
+				log_msg.body.log_GPS.vel_e  	= buf_gps_pos.vel_e_m_s;
+				log_msg.body.log_GPS.vel_d  	= buf_gps_pos.vel_d_m_s;
+				log_msg.body.log_GPS.sats		= buf_gps_pos.satellites_used;
 				LOGBUFFER_WRITE_AND_COUNT(GPS);
 			}
 		}
 		else
-		{	
+		{
+				//led_off(1);
+				//gps_ok = false;
+				
 #ifdef DEBUG_PRN
 			printf("\tGPS pos is not update\n");
 #endif	
 		}
 //t4 = hrt_absolute_time();
-		//powerain 这一部分去掉
+		//FIXME 这一部分去掉
 		if ((poll_counter + 1) % poll_to_logging_factor == 0) {
 			poll_counter = 0;
 		} else {
@@ -1396,14 +1421,28 @@ int sdlog2_thread_main(int argc, char *argv[])
 //t7 = hrt_absolute_time();
 //printf("Time: %lld  %lld  %lld  %lld  %lld  %lld  %lld  %lld  %lld\n", t0, t1, t2, t3, t4, t5, t6, t7, t8);
 //#ifdef DEBUG_PRN
-#if 1
+#if 0
 printf("GPS Time stamp is: %lld\tUTC Time is: %lld\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
 printf("GPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
-printf("Sensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
-printf("DT_AC: %lld  DT_GY: %lld\n", buf_acc.integral_dt, buf_gyr.integral_dt);
+//printf("Sensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
+//printf("DT_AC: %lld  DT_GY: %lld\n", buf_acc.integral_dt, buf_gyr.integral_dt);
 #endif
 //t8 = hrt_absolute_time();
 //led_on(LED_RED);
+//led_on(LED_GREEN);
+//led_on(LED_BLUE);
+		c++;
+		if(gps_ok)
+		{
+			led_off(3);
+			led_toggle(1);
+		}
+		else if(c % 8 == 0)
+		{
+			led_off(1);
+			led_toggle(3);
+			c=0;
+		}
 	}
 
 	if (logging_enabled) {

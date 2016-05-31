@@ -100,20 +100,22 @@ struct log_IMU_s {
 	float temp_mag;
 };
 */
-/* struct log_IMU_s {
+ struct log_IMU_s {
 	float acc_x;
 	float acc_y;
 	float acc_z;
-	float gyro_x;
-	float gyro_y;
-	float gyro_z;
+	float gyr_x;
+	float gyr_y;
+	float gyr_z;
 	float mag_x;
 	float mag_y;
 	float mag_z;
-	uint64_t time_acc;
-	uint64_t time_gyr;
-	uint64_t time_mag;
-}; */
+
+	uint64_t acc_time;
+	uint64_t gyr_time;
+	uint64_t mag_time;
+}; 
+/*
 struct log_IMU_s {
 	float acc_x;
 	float acc_y;
@@ -145,7 +147,7 @@ struct log_IMU_s {
 	int16_t mag_y_raw;
 	int16_t mag_Z_raw;
 };
-
+*/
 /* --- SENS - OTHER SENSORS --- */
 #define LOG_SENS_MSG 5
 struct log_SENS_s {
@@ -198,6 +200,12 @@ struct log_GPS_s {
 	uint64_t time_gps;
 	int32_t lat;
 	int32_t lon;
+	int32_t alt;
+	
+	float vel_n;
+	float vel_e;
+	float vel_d; 
+
 	uint8_t sats;
 };
 /*
@@ -674,14 +682,14 @@ static const struct log_format_s log_formats[] = {
 	/* business-level messages, ID < 0x80 */
 	//LOG_FORMAT(ATT, "fffffffffffff",	"qw,qx,qy,qz,Roll,Pitch,Yaw,RollRate,PitchRate,YawRate,GX,GY,GZ"),
 	//LOG_FORMAT(ATSP, "ffffffff",		"RollSP,PitchSP,YawSP,ThrustSP,qw,qx,qy,qz"),
-	LOG_FORMAT_S(IMU, IMU, "fffffffffQQQ",		"AccX,AccY,AccZ,GyroX,GyroY,GyroZ,MagX,MagY,MagZ,tA,tG,tM"),
+	LOG_FORMAT_S(IMU, IMU, "fffffffffQQQ",		"AccX,AccY,AccZ,GyrX,GyrY,GyrZ,MagX,MagY,MagZ,tA,tG,tM"),
 	//LOG_FORMAT_S(IMU1, IMU, "ffffffffffff",		"AccX,AccY,AccZ,GyroX,GyroY,GyroZ,MagX,MagY,MagZ,tA,tG,tM"),
 	//LOG_FORMAT_S(IMU2, IMU, "ffffffffffff",		"AccX,AccY,AccZ,GyroX,GyroY,GyroZ,MagX,MagY,MagZ,tA,tG,tM"),
 	//LOG_FORMAT_S(SENS, SENS, "fffff",		"BaroPres,BaroAlt,BaroTemp,DiffPres,DiffPresFilt"),
 	//LOG_FORMAT_S(AIR1, SENS, "fffff",	"BaroPa,BaroAlt,BaroTmp,DiffPres,DiffPresF"),
 	//LOG_FORMAT(LPOS, "ffffffffLLfBBff",	"X,Y,Z,Dist,DistR,VX,VY,VZ,RLat,RLon,RAlt,PFlg,GFlg,EPH,EPV"),
 	//LOG_FORMAT(LPSP, "ffffffffff",		"X,Y,Z,Yaw,VX,VY,VZ,AX,AY,AZ"),
-	LOG_FORMAT(GPS, "QQiiB",	"TimeStamp,GPSTime,Lat,Lon,nSat"),
+	LOG_FORMAT(GPS, "QQiiifffB",	"TS,GPST,Lat,Lon,Alt,Vn,Ve,Vd,nSat"),
 	//LOG_FORMAT_S(ATTC, ATTC, "ffff",		"Roll,Pitch,Yaw,Thrust"),
 	//LOG_FORMAT_S(ATC1, ATTC, "ffff",		"Roll,Pitch,Yaw,Thrust"),
 	//LOG_FORMAT(STAT, "BBBBf",		"MainState,NavState,ArmS,Failsafe,Load"),
@@ -730,9 +738,9 @@ static const struct log_format_s log_formats[] = {
 	//LOG_FORMAT(LAND, "B", "Landed"),
 	/* system-level messages, ID >= 0x80 */
 	/* FMT: don't write format of format message, it's useless */
-	LOG_FORMAT(TIME, "Q", "StartTime"),
-	LOG_FORMAT(VER, "NZ", "Arch,FwGit"),
-	LOG_FORMAT(PARM, "Nf", "Name,Value")
+	//LOG_FORMAT(TIME, "Q", "StartTime"),
+	//LOG_FORMAT(VER, "NZ", "Arch,FwGit"),
+	//LOG_FORMAT(PARM, "Nf", "Name,Value")
 };
 
 static const unsigned log_formats_num = sizeof(log_formats) / sizeof(log_formats[0]);

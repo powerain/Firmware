@@ -140,6 +140,9 @@ px4fmu-v2_default:
 px4fmu-v4_default:
 	$(call cmake-build,nuttx_px4fmu-v4_default)
 
+noitom_gps:
+	$(call cmake-build,nuttx_px4fmu-v4_gps)
+
 px4-stm32f4discovery_default:
 	$(call cmake-build,nuttx_px4-stm32f4discovery_default)
 
