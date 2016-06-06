@@ -320,26 +320,22 @@ then
 
 	# waypoint storage
 	# REBOOTWORK this needs to start in parallel
-	if dataman start
-	then
-	fi
+	#if dataman start
+	#then
+	#fi
 
 	#
 	# Sensors System (start before Commander so Preflight checks are properly run)
 	#
-	sh /etc/init.d/rc.sensors
-	#if mpu9250 -R 2 start
-	#then
-	#fi
-	#powerain
+	#sh /etc/init.d/rc.sensors
 
 	# Needs to be this early for in-air-restarts
-	if [ $OUTPUT_MODE == hil ]
-	then
-	    commander start -hil
-	else
-	    commander start
-	fi
+	#if [ $OUTPUT_MODE == hil ]
+	#then
+	    #commander start -hil
+	#else
+	    #commander start
+	#fi
 
 	#
 	# Start primary output
@@ -498,12 +494,12 @@ then
 			then
 				set MAVLINK_F "-r 1200 -d /dev/ttyS1"
 				# Start MAVLink on Wifi (ESP8266 port)
-				mavlink start -r 20000 -m config -b 921600 -d /dev/ttyS0
+				#mavlink start -r 20000 -m config -b 921600 -d /dev/ttyS0
 			fi
 		fi
 	fi
 
-	mavlink start $MAVLINK_F
+	#mavlink start $MAVLINK_F
 	unset MAVLINK_F
 
 	#
@@ -520,27 +516,27 @@ then
 		fi
 		if param compare SYS_COMPANION 921600
 		then
-			mavlink start -d /dev/ttyS2 -b 921600 -m onboard -r 80000 -x
+			#mavlink start -d /dev/ttyS2 -b 921600 -m onboard -r 80000 -x
 		fi
 		if param compare SYS_COMPANION 57600
 		then
-			mavlink start -d /dev/ttyS2 -b 57600 -m onboard -r 5000 -x
+			#mavlink start -d /dev/ttyS2 -b 57600 -m onboard -r 5000 -x
 		fi
 		if param compare SYS_COMPANION 157600
 		then
-			mavlink start -d /dev/ttyS2 -b 57600 -m osd -r 1000
+			#mavlink start -d /dev/ttyS2 -b 57600 -m osd -r 1000
 		fi
 		if param compare SYS_COMPANION 257600
 		then
-			mavlink start -d /dev/ttyS2 -b 57600 -m magic -r 5000 -x
+			#mavlink start -d /dev/ttyS2 -b 57600 -m magic -r 5000 -x
 		fi
 		if param compare SYS_COMPANION 357600
 		then
-			mavlink start -d /dev/ttyS2 -b 57600 -r 1000
+			#mavlink start -d /dev/ttyS2 -b 57600 -r 1000
 		fi
 		if param compare SYS_COMPANION 1921600
 		then
-			mavlink start -d /dev/ttyS2 -b 921600 -r 20000
+			#mavlink start -d /dev/ttyS2 -b 921600 -r 20000
 		fi
 		# Sensors on the PWM interface bank
 		# clear pins 5 and 6
@@ -609,7 +605,7 @@ then
 
 	if ver hwcmp PX4FMU_V4
 	then
-		frsky_telemetry start -d /dev/ttyS6
+		#frsky_telemetry start -d /dev/ttyS6
 	fi
 
 	if ver hwcmp PX4FMU_V2
@@ -630,14 +626,15 @@ then
 		# Try to get an USB console
 		nshterm /dev/ttyACM0 &
 	else
-		mavlink start -r 800000 -d /dev/ttyACM0 -m config -x
+		#mavlink start -r 800000 -d /dev/ttyACM0 -m config -x
 	fi
 
 
 	#
 	# Logging
 	#
-	sh /etc/init.d/rc.logging
+	#powerain
+	#sh /etc/init.d/rc.logging
 
 	#
 	# Start up ARDrone Motor interface
@@ -672,7 +669,7 @@ then
 		sh /etc/init.d/rc.interface
 
 		# Start standard fixedwing apps
-		sh /etc/init.d/rc.fw_apps
+		#sh /etc/init.d/rc.fw_apps
 	fi
 
 	#
@@ -809,7 +806,7 @@ then
 	#
 	if [ $VEHICLE_TYPE == passthrough ]
 	then
-		mavlink stop-all
+		#mavlink stop-all
 		commander stop
 
 		# Stop multicopter attitude controller if it is running, the controls come
@@ -849,7 +846,7 @@ then
 	#
 	# Start the navigator
 	#
-	navigator start
+	#navigator start
 
 	#
 	# Generic setup (autostart ID not found)
@@ -880,12 +877,14 @@ then
 # End of autostart
 fi
 
+sh /etc/init.d/rc.sensors
+sh /etc/init.d/rc.logging
 # There is no further script processing, so we can free some RAM
 # XXX potentially unset all script variables.
 unset TUNE_ERR
 
 # Boot is complete, inform MAVLink app(s) that the system is now fully up and running
-mavlink boot_complete
+#mavlink boot_complete
 
 if [ $EXIT_ON_END == yes ]
 then

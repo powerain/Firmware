@@ -139,6 +139,11 @@
 extern void led_toggle(int led);
 extern void led_on(int led);
 extern void led_off(int led);
+
+#define MPU_DEVICE_PATH_ACCEL		"/dev/mpu9250_accel"
+#define MPU_DEVICE_PATH_GYRO		"/dev/mpu9250_gyro"
+#define MPU_DEVICE_PATH_MAG		"/dev/mpu9250_mag"
+
 #define DEBUG_PRN
 #define PX4_EPOCH_SECS 1234567890L
 
@@ -356,7 +361,8 @@ int sdlog2_main(int argc, char *argv[])
 		main_thread_should_exit = false;
 		
 		//FIXME
-		task_priority = SCHED_PRIORITY_DEFAULT;
+		//task_priority = SCHED_PRIORITY_DEFAULT;
+		task_priority = 150;
 		deamon_task = px4_task_spawn_cmd("sdlog2",
 						 SCHED_DEFAULT,
 						 task_priority,
@@ -1232,34 +1238,49 @@ int sdlog2_thread_main(int argc, char *argv[])
 		poll_to_logging_factor = 1;
 	}
 
-	int fd_acc;
-	int fd_gyr;
-	int fd_mag;
+	int fd_acc = -1;
+	int fd_gyr = -1;
+	int fd_mag = -1;
 	
 //	struct accel_report buf_acc;
 //	struct gyro_report buf_gyr;
 //	struct mag_report buf_mag;
 	int	ret;
 
-	fd_acc = px4_open(ACCEL0_DEVICE_PATH, O_RDONLY);
-	if (fd_acc < 0) {
-		printf("\tACCEL: open fail\n");
-//		return ERROR;
-	}
+	//fd_acc = px4_open(MPU_DEVICE_PATH_ACCEL, O_RDONLY);
+	for(int i = 0; i < 3; i++)
+	{
+		usleep(500000);
 
-	fd_gyr = px4_open(GYRO0_DEVICE_PATH, O_RDONLY);
-	if (fd_gyr < 0) {
-		printf("\tGYRO: open fail\n");
+		if (fd_acc < 0) {
+			fd_acc = px4_open(ACCEL0_DEVICE_PATH, O_RDONLY);
+
+			if(fd_acc < 0)
+				printf("ACCEL: open fail\n");
+		}
+
+	//fd_gyr = px4_open(MPU_DEVICE_PATH_GYRO, O_RDONLY);
+		if (fd_gyr < 0) {
+			fd_gyr = px4_open(GYRO0_DEVICE_PATH, O_RDONLY);
+
+			if (fd_gyr < 0)
+				printf("GYRO: open fail\n");
 //		return ERROR;
+		}
+	
+	//fd_mag = px4_open(MPU_DEVICE_PATH_MAG, O_RDONLY);
+		if (fd_mag < 0) {
+			fd_mag = px4_open(MAG0_DEVICE_PATH, O_RDONLY);
+
+			if (fd_mag < 0)
+				printf("MAG: open fail\n");
+//		return ERROR;
+		}
+
+		if(fd_acc >= 0 && fd_gyr >= 0 && fd_mag >= 0)
+			break;
 	}
 	
-	fd_mag = px4_open(MAG0_DEVICE_PATH, O_RDONLY);
-	if (fd_mag < 0) {
-		printf("\tMAG: open fail\n");
-//		return ERROR;
-	}
-	
-	usleep(1000000);
 	int size_ba = sizeof(buf_acc);
 	int size_bg = sizeof(buf_gyr);
 	int size_bm = sizeof(buf_mag);
@@ -1270,22 +1291,51 @@ int sdlog2_thread_main(int argc, char *argv[])
 
 //	uint64_t t0, t1, t2, t3, t4, t5, t6, t7, t8;
 //	t0 = t1 = t2 = t3 = t4 = t5 = t6 = t7 = t8 = 0;
+//	uint64_t t0 = 0;
 
-//led_on(0);
-//led_on(1);
-led_on(3);
 	int c = 0;
 	bool gps_ok =  false;
 	while (!main_thread_should_exit) 
 	{
 		/* wait at least 100ms, sensor should have data after no more than 20ms */
-		usleep(900);
-
 //t0 = hrt_absolute_time();
+//printf("Time: %lld \n", t0);
+		usleep(8970);
+		//usleep(500);
+
+		ret = px4_read(fd_mag, &buf_mag, size_bm);
+/*		if (ret != size_bm) 
+		{
+
+#undef DEBUG_PRN
+#ifdef DEBUG_PRN
+			printf("\tMAG: read fail (%d)\n", ret);
+#endif
+			//continue;
+			for(int i = 0; i < 3; i++)
+			{
+				usleep(500);
+				ret = px4_read(fd_mag, &buf_mag, size_bm);
+				if (ret == size_bm)
+					break;
+			}
+
+			if(ret != size_bm)
+			{
+#ifdef DEBUG_PRN
+				printf("\tMAG: read fail (%d), 3 times\n", ret);
+#endif
+				continue;
+			}
+		}
+*/
 		ret = px4_read(fd_acc, &buf_acc, size_ba);
 //t1 = hrt_absolute_time();
 		if (ret != size_ba) {
-//			printf("\tACCEL: read1 fail (%d)\n", ret);
+#undef DEBUG_PRN
+#ifdef DEBUG_PRN
+			printf("\tACCEL: read1 fail (%d)\n", ret);
+#endif
 			continue;
 		}
 //printf("acc DT:%lld  x:%f  y:%f  z:%f  x_integral:%f  y:%f  z:%f  \n", 
@@ -1293,15 +1343,12 @@ led_on(3);
 		
 		ret = px4_read(fd_gyr, &buf_gyr, size_bg);
 		if (ret != size_bg) {
-//			printf("\tGYRO: read fail (%d)\n", ret);
+#ifdef DEBUG_PRN
+			printf("\tGYRO: read fail (%d)\n", ret);
+#endif
 			continue;
 		}
 
-		ret = px4_read(fd_mag, &buf_mag, size_bm);
-		if (ret != size_bm) {
-//			printf("\tMAG: read fail (%d)\n", ret);
-			continue;
-		}
 
 //t2 = hrt_absolute_time();
 //printf("\tTime is: %lld\t%lld\t%lld\n", t3, t1, t0);
@@ -1342,6 +1389,7 @@ led_on(3);
 		log_msg.body.log_IMU.mag_Z_raw = buf_mag.z_raw;*/
 //		printf("\tTime stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
 #undef DEBUG_PRN
+//#define DEBUG_PRN
 #ifdef DEBUG_PRN
 //#if 0
 		printf("\tACCEL accel: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_acc.x)), *((int *)&(buf_acc.y)), *((int *)&(buf_acc.z)));
@@ -1357,8 +1405,6 @@ led_on(3);
 		if (gps_pos_updated) 
 		{
 #ifdef DEBUG_PRN
-//#if 0
-//#if 1
 			printf("\tGPS Time stamp is: %llX\tUTC Time is: %llX\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
 			printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
 #endif			
@@ -1391,9 +1437,6 @@ led_on(3);
 		}
 		else
 		{
-				//led_off(1);
-				//gps_ok = false;
-				
 #ifdef DEBUG_PRN
 			printf("\tGPS pos is not update\n");
 #endif	
@@ -1422,25 +1465,26 @@ led_on(3);
 //printf("Time: %lld  %lld  %lld  %lld  %lld  %lld  %lld  %lld  %lld\n", t0, t1, t2, t3, t4, t5, t6, t7, t8);
 //#ifdef DEBUG_PRN
 #if 0
-printf("GPS Time stamp is: %lld\tUTC Time is: %lld\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
-printf("GPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
-//printf("Sensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
+//printf("GPS Time stamp is: %lld\tUTC Time is: %lld\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
+//printf("GPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
+printf("Sensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
 //printf("DT_AC: %lld  DT_GY: %lld\n", buf_acc.integral_dt, buf_gyr.integral_dt);
 #endif
 //t8 = hrt_absolute_time();
-//led_on(LED_RED);
-//led_on(LED_GREEN);
-//led_on(LED_BLUE);
 		c++;
-		if(gps_ok)
+		if(c % 99 == 0)
 		{
-			led_off(3);
-			led_toggle(1);
-		}
-		else if(c % 8 == 0)
-		{
-			led_off(1);
-			led_toggle(3);
+			if(gps_ok)
+			{
+				led_off(3);
+				led_toggle(1);
+			}
+			else
+			{
+				led_off(1);
+				led_toggle(3);
+			}
+
 			c=0;
 		}
 	}
