@@ -826,7 +826,7 @@ then
 		if ver hwcmp PX4FMU_V4
 		then
 			# On Pixracer use Telem 2 port (TL2).
-			snapdragon_rc_pwm start -d /dev/ttyS2
+			#snapdragon_rc_pwm start -d /dev/ttyS2
 			fmu mode_pwm4
 		fi
 
