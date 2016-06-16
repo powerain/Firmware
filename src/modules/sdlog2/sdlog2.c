@@ -216,6 +216,7 @@ static pthread_attr_t logwriter_attr;
 
 static perf_counter_t perf_write;
 
+static int possender_thread(int argc, char *argv[]);
 /**
  * Log buffer writing thread. Open and close file here.
  */
@@ -370,6 +371,14 @@ int sdlog2_main(int argc, char *argv[])
 						 sdlog2_thread_main,
 						 (char * const *)argv);
 
+		//FIXME
+		px4_task_spawn_cmd("possender",
+						 SCHED_DEFAULT,
+						 90,
+						 3400,
+						 possender_thread,
+						 (char * const *)argv);
+						 
 		/* wait for the task to launch */
 		unsigned const max_wait_us = 1000000;
 		unsigned const max_wait_steps = 2000;
@@ -611,6 +620,34 @@ int open_perf_file(const char* str)
 	return fd;
 }
 
+static int possender_thread(int argc, char *argv[])
+{
+	int pos_sub;
+	px4_pollfd_struct_t fds;
+
+	pos_sub 	= orb_subscribe(ORB_ID(vehicle_gps_position));
+	fds.fd 		= pos_sub;
+	fds.events 	= POLLIN;
+
+	struct vehicle_gps_position_s buf_gps_pos;
+	memset(&buf_gps_pos, 0, sizeof(buf_gps_pos));
+	
+	while(true)
+	{
+		int ret = px4_poll(&fds, 1, 1000);
+		if(ret > 0)
+		{
+			orb_copy(ORB_ID(vehicle_gps_position), pos_sub, &buf_gps_pos);
+			printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
+		}
+		
+		usleep(500000);
+		//printf("possender_thread\n");
+	}
+
+	return 0;
+}
+
 static void *logwriter_thread(void *arg)
 {
 	/* set name */
@@ -765,6 +802,11 @@ void sdlog2_start_log()
 	if (0 != pthread_create(&logwriter_pthread, &logwriter_attr, logwriter_thread, &lb)) {
 		PX4_WARN("error creating logwriter thread");
 	}
+
+	// if (0 != pthread_create(&possender_thread, &logwriter_attr, logwriter_thread, &lb)) 
+	// {
+		// PX4_WARN("error creating logwriter thread");
+	// }
 
 	/* write all performance counters */
 	hrt_abstime curr_time = hrt_absolute_time();
@@ -1285,8 +1327,8 @@ int sdlog2_thread_main(int argc, char *argv[])
 	int size_bg = sizeof(buf_gyr);
 	int size_bm = sizeof(buf_mag);
 
-	printf("log packet size is %d\n", LOG_PACKET_SIZE(IMU));
-	printf("size of log_msg.body is %d\n", sizeof(log_msg.body));
+	//printf("log packet size is %d\n", LOG_PACKET_SIZE(IMU));
+	//printf("size of log_msg.body is %d\n", sizeof(log_msg.body));
 //	printf("size of float is %d\n", sizeof(float));
 
 //	uint64_t t0, t1, t2, t3, t4, t5, t6, t7, t8;
@@ -1388,6 +1430,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		log_msg.body.log_IMU.mag_y_raw = buf_mag.y_raw;
 		log_msg.body.log_IMU.mag_Z_raw = buf_mag.z_raw;*/
 //		printf("\tTime stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
+//printf("\tACCEL accel: x:%8.4f\ty:%8.4f\tz:%8.4f\n", (double)(buf_acc.x), (double)(buf_acc.y), (double)(buf_acc.z));
 #undef DEBUG_PRN
 //#define DEBUG_PRN
 #ifdef DEBUG_PRN
@@ -1472,7 +1515,7 @@ printf("Sensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, 
 #endif
 //t8 = hrt_absolute_time();
 		c++;
-		if(c % 99 == 0)
+		if(c % 50 == 0)
 		{
 			if(gps_ok)
 			{
