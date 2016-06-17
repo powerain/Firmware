@@ -51,6 +51,7 @@
 #include <px4_posix.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <termios.h>
 #ifdef __PX4_DARWIN
 #include <sys/param.h>
 #include <sys/mount.h>
@@ -115,6 +116,7 @@
 #include <uORB/topics/ekf2_replay.h>
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/commander_state.h>
+#include <uORB/topics/noitom_pos.h>
 
 #include <systemlib/systemlib.h>
 #include <systemlib/param/param.h>
@@ -622,30 +624,67 @@ int open_perf_file(const char* str)
 
 static int possender_thread(int argc, char *argv[])
 {
+	int ret = 0;
 	int pos_sub;
-	px4_pollfd_struct_t fds;
 
-	pos_sub 	= orb_subscribe(ORB_ID(vehicle_gps_position));
-	fds.fd 		= pos_sub;
-	fds.events 	= POLLIN;
-
-	struct vehicle_gps_position_s buf_gps_pos;
-	memset(&buf_gps_pos, 0, sizeof(buf_gps_pos));
+	pos_sub 	= orb_subscribe(ORB_ID(noitom_pos));
+	px4_pollfd_struct_t fds[] = {
+		{ .fd = pos_sub, .events = POLLIN},
+	};
+	struct noitom_pos_s buf_pos;
+	memset(&buf_pos, 0, sizeof(buf_pos));
 	
+	int fd_wifi;
+	fd_wifi = open("/dev/ttyS0",  O_RDWR | O_NONBLOCK | O_NOCTTY);
+	if(fd_wifi < 0)
+	{
+		printf("ERROR ttyS open fail\n");
+		return -1;
+	}
+
+	struct termios uart_config;
+	if (tcgetattr(fd_wifi, &uart_config) < 0)
+	{
+		printf("ERROR getting termios config\n");
+		ret = -2;
+		goto cleanup;
+	}
+	/* Set baud rate */
+	if (cfsetispeed(&uart_config, B57600) < 0 || cfsetospeed(&uart_config, B57600) < 0) {
+		printf("ERROR setting termios config\n");
+		ret = -3;
+		goto cleanup;
+	}
+
+	if (tcsetattr(fd_wifi, TCSANOW, &uart_config) < 0)
+	{
+		printf("ERROR setting termios config\n");
+		ret = -4;
+		goto cleanup;
+	}
+
+	uint8_t sample_uart2[100] = {'U', 'A', 'R', 'T', '1', ' ', '#', '\r', '\n'};
+
 	while(true)
 	{
-		int ret = px4_poll(&fds, 1, 1000);
+		/* wait for sensor update of 1 file descriptor for 1000 ms (1 second) */
+		int ret = px4_poll(fds, 1, 1000);
 		if(ret > 0)
 		{
-			orb_copy(ORB_ID(vehicle_gps_position), pos_sub, &buf_gps_pos);
-			printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
+			orb_copy(ORB_ID(noitom_pos), pos_sub, &buf_pos);
+			//printf("POS Time stamp is: %lld\n", buf_pos.timestamp);
+			sprintf((char *)sample_uart2, "POS Time stamp is: %lld\r\n", buf_pos.timestamp);
+			//printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
 		}
-		
-		usleep(500000);
+
+		write(fd_wifi, sample_uart2, sizeof(sample_uart2));
+		//usleep(500000);
 		//printf("possender_thread\n");
 	}
 
-	return 0;
+cleanup:
+	close(fd_wifi);
+	return ret;
 }
 
 static void *logwriter_thread(void *arg)
@@ -1011,6 +1050,12 @@ struct gyro_report buf_gyr;
 struct mag_report buf_mag;
 int sdlog2_thread_main(int argc, char *argv[])
 {
+	//powerain
+	struct noitom_pos_s buf_pos;
+	memset(&buf_pos, 0, sizeof(buf_pos));
+	orb_advert_t pos_pub = orb_advertise(ORB_ID(noitom_pos), &buf_pos);
+	//orb_publish(ORB_ID(noitom_pos), pos_pub, &buf_pos);
+
 	/* default log rate: 50 Hz */
 	int32_t log_rate = 50;
 	int log_buffer_size = LOG_BUFFER_SIZE_DEFAULT;
@@ -1284,12 +1329,8 @@ int sdlog2_thread_main(int argc, char *argv[])
 	int fd_gyr = -1;
 	int fd_mag = -1;
 	
-//	struct accel_report buf_acc;
-//	struct gyro_report buf_gyr;
-//	struct mag_report buf_mag;
 	int	ret;
 
-	//fd_acc = px4_open(MPU_DEVICE_PATH_ACCEL, O_RDONLY);
 	for(int i = 0; i < 3; i++)
 	{
 		usleep(500000);
@@ -1301,22 +1342,18 @@ int sdlog2_thread_main(int argc, char *argv[])
 				printf("ACCEL: open fail\n");
 		}
 
-	//fd_gyr = px4_open(MPU_DEVICE_PATH_GYRO, O_RDONLY);
 		if (fd_gyr < 0) {
 			fd_gyr = px4_open(GYRO0_DEVICE_PATH, O_RDONLY);
 
 			if (fd_gyr < 0)
 				printf("GYRO: open fail\n");
-//		return ERROR;
 		}
 	
-	//fd_mag = px4_open(MPU_DEVICE_PATH_MAG, O_RDONLY);
 		if (fd_mag < 0) {
 			fd_mag = px4_open(MAG0_DEVICE_PATH, O_RDONLY);
 
 			if (fd_mag < 0)
 				printf("MAG: open fail\n");
-//		return ERROR;
 		}
 
 		if(fd_acc >= 0 && fd_gyr >= 0 && fd_mag >= 0)
@@ -1326,10 +1363,6 @@ int sdlog2_thread_main(int argc, char *argv[])
 	int size_ba = sizeof(buf_acc);
 	int size_bg = sizeof(buf_gyr);
 	int size_bm = sizeof(buf_mag);
-
-	//printf("log packet size is %d\n", LOG_PACKET_SIZE(IMU));
-	//printf("size of log_msg.body is %d\n", sizeof(log_msg.body));
-//	printf("size of float is %d\n", sizeof(float));
 
 //	uint64_t t0, t1, t2, t3, t4, t5, t6, t7, t8;
 //	t0 = t1 = t2 = t3 = t4 = t5 = t6 = t7 = t8 = 0;
@@ -1429,7 +1462,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		log_msg.body.log_IMU.mag_x_raw = buf_mag.x_raw;
 		log_msg.body.log_IMU.mag_y_raw = buf_mag.y_raw;
 		log_msg.body.log_IMU.mag_Z_raw = buf_mag.z_raw;*/
-//		printf("\tTime stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
+//printf("\tTime stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
 //printf("\tACCEL accel: x:%8.4f\ty:%8.4f\tz:%8.4f\n", (double)(buf_acc.x), (double)(buf_acc.y), (double)(buf_acc.z));
 #undef DEBUG_PRN
 //#define DEBUG_PRN
@@ -1453,13 +1486,9 @@ int sdlog2_thread_main(int argc, char *argv[])
 #endif			
 			if(buf_gps_pos.satellites_used > 0)
 			{
-				//led_off(3);
-				//led_toggle(1);
 				gps_ok = true;
-			}
-			 else
+			} else
 			{
-				 //led_off(1);
 				 gps_ok = false;
 			}
 
@@ -1521,14 +1550,18 @@ printf("Sensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, 
 			{
 				led_off(3);
 				led_toggle(1);
-			}
-			else
+			} else
 			{
 				led_off(1);
 				led_toggle(3);
 			}
-
 			c=0;
+		}
+
+		/*FIXME:to publish the position here*/
+		{
+			buf_pos.timestamp = buf_acc.timestamp;
+			orb_publish(ORB_ID(noitom_pos), pos_pub, &buf_pos);
 		}
 	}
 
