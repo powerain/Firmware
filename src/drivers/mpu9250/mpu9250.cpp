@@ -1324,6 +1324,9 @@ MPU9250::measure()
 		return;
 	}
 
+	/* remember the time, to use later */
+	uint64_t mpu_time = hrt_absolute_time();
+
 	_mag->measure(mpu_report.mag);
 
 	/*
@@ -1374,7 +1377,8 @@ MPU9250::measure()
 	/*
 	 * Adjust and scale results to m/s^2.
 	 */
-	grb.timestamp = arb.timestamp = hrt_absolute_time();
+	//grb.timestamp = arb.timestamp = hrt_absolute_time();
+	grb.timestamp = arb.timestamp = mpu_time;
 
 	// report the error count as the sum of the number of bad
 	// transfers and bad register reads. This allows the higher

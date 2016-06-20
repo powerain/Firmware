@@ -625,10 +625,10 @@ int open_perf_file(const char* str)
 static int possender_thread(int argc, char *argv[])
 {
 	int ret = 0;
-	int pos_sub;
 
-	pos_sub 	= orb_subscribe(ORB_ID(noitom_pos));
-	px4_pollfd_struct_t fds[] = {
+	int pos_sub = orb_subscribe(ORB_ID(noitom_pos));
+	px4_pollfd_struct_t fds[] =
+	{
 		{ .fd = pos_sub, .events = POLLIN},
 	};
 	struct noitom_pos_s buf_pos;
@@ -1054,7 +1054,20 @@ int sdlog2_thread_main(int argc, char *argv[])
 	struct noitom_pos_s buf_pos;
 	memset(&buf_pos, 0, sizeof(buf_pos));
 	orb_advert_t pos_pub = orb_advertise(ORB_ID(noitom_pos), &buf_pos);
-	//orb_publish(ORB_ID(noitom_pos), pos_pub, &buf_pos);
+
+	int mag_sub, acc_sub, gyr_sub;
+	mag_sub = orb_subscribe(ORB_ID(sensor_mag));
+	acc_sub = orb_subscribe(ORB_ID(sensor_accel));
+	gyr_sub = orb_subscribe(ORB_ID(sensor_gyro));
+
+	px4_pollfd_struct_t fds[] = {
+		{ .fd = mag_sub, .events = POLLIN},
+		{ .fd = acc_sub, .events = POLLIN},
+		{ .fd = gyr_sub, .events = POLLIN},
+	};
+	memset(&buf_mag, 0, sizeof(buf_mag));
+	memset(&buf_acc, 0, sizeof(buf_acc));
+	memset(&buf_gyr, 0, sizeof(buf_gyr));
 
 	/* default log rate: 50 Hz */
 	int32_t log_rate = 50;
@@ -1325,158 +1338,84 @@ int sdlog2_thread_main(int argc, char *argv[])
 		poll_to_logging_factor = 1;
 	}
 
-	int fd_acc = -1;
-	int fd_gyr = -1;
-	int fd_mag = -1;
-	
 	int	ret;
-
-	for(int i = 0; i < 3; i++)
-	{
-		usleep(500000);
-
-		if (fd_acc < 0) {
-			fd_acc = px4_open(ACCEL0_DEVICE_PATH, O_RDONLY);
-
-			if(fd_acc < 0)
-				printf("ACCEL: open fail\n");
-		}
-
-		if (fd_gyr < 0) {
-			fd_gyr = px4_open(GYRO0_DEVICE_PATH, O_RDONLY);
-
-			if (fd_gyr < 0)
-				printf("GYRO: open fail\n");
-		}
-	
-		if (fd_mag < 0) {
-			fd_mag = px4_open(MAG0_DEVICE_PATH, O_RDONLY);
-
-			if (fd_mag < 0)
-				printf("MAG: open fail\n");
-		}
-
-		if(fd_acc >= 0 && fd_gyr >= 0 && fd_mag >= 0)
-			break;
-	}
-	
-	int size_ba = sizeof(buf_acc);
-	int size_bg = sizeof(buf_gyr);
-	int size_bm = sizeof(buf_mag);
 
 //	uint64_t t0, t1, t2, t3, t4, t5, t6, t7, t8;
 //	t0 = t1 = t2 = t3 = t4 = t5 = t6 = t7 = t8 = 0;
-//	uint64_t t0 = 0;
 
 	int c = 0;
 	bool gps_ok =  false;
 	while (!main_thread_should_exit) 
 	{
-		/* wait at least 100ms, sensor should have data after no more than 20ms */
-//t0 = hrt_absolute_time();
-//printf("Time: %lld \n", t0);
-		usleep(8970);
-		//usleep(500);
+		uint64_t t0, t1;
+//		t0 = hrt_absolute_time();
+//		usleep(8970); //old
+//		usleep(8920);
+//		usleep(9000);
 
-		ret = px4_read(fd_mag, &buf_mag, size_bm);
-/*		if (ret != size_bm) 
+re_in:
+		t0 = hrt_absolute_time();
+		/*wait for 5 ms*/
+		ret = px4_poll(fds, (sizeof(fds) / sizeof(fds[0])), 5);
+
+		if(ret > 0)
 		{
+			memset(&buf_mag, 0, sizeof(buf_mag));
+			memset(&buf_acc, 0, sizeof(buf_acc));
+			memset(&buf_gyr, 0, sizeof(buf_gyr));
+			memset(&log_msg.body.log_IMU, 0, sizeof(log_msg.body.log_IMU));
 
-#undef DEBUG_PRN
-#ifdef DEBUG_PRN
-			printf("\tMAG: read fail (%d)\n", ret);
-#endif
-			//continue;
-			for(int i = 0; i < 3; i++)
-			{
-				usleep(500);
-				ret = px4_read(fd_mag, &buf_mag, size_bm);
-				if (ret == size_bm)
-					break;
-			}
+			orb_copy(ORB_ID(sensor_mag), mag_sub, &buf_mag);
+			orb_copy(ORB_ID(sensor_accel), acc_sub, &buf_acc);
+			orb_copy(ORB_ID(sensor_gyro), gyr_sub, &buf_gyr);
+			//printf("ORB Time stamp is: %lld\n", buf_mag.timestamp);
 
-			if(ret != size_bm)
-			{
-#ifdef DEBUG_PRN
-				printf("\tMAG: read fail (%d), 3 times\n", ret);
-#endif
-				continue;
-			}
-		}
-*/
-		ret = px4_read(fd_acc, &buf_acc, size_ba);
-//t1 = hrt_absolute_time();
-		if (ret != size_ba) {
-#undef DEBUG_PRN
-#ifdef DEBUG_PRN
-			printf("\tACCEL: read1 fail (%d)\n", ret);
-#endif
-			continue;
-		}
-//printf("acc DT:%lld  x:%f  y:%f  z:%f  x_integral:%f  y:%f  z:%f  \n", 
-//	buf_acc.integral_dt, (double)buf_acc.x, (double)buf_acc.y, (double)buf_acc.z);
-		
-		ret = px4_read(fd_gyr, &buf_gyr, size_bg);
-		if (ret != size_bg) {
-#ifdef DEBUG_PRN
-			printf("\tGYRO: read fail (%d)\n", ret);
-#endif
+			//所有的传感器数据读正确，拷贝数据
+			log_msg.msg_type = LOG_IMU_MSG;
+			log_msg.body.log_IMU.acc_x	= buf_acc.x;
+			log_msg.body.log_IMU.acc_y	= buf_acc.y;
+			log_msg.body.log_IMU.acc_z	= buf_acc.z;
+			log_msg.body.log_IMU.gyr_x	= buf_gyr.x;
+			log_msg.body.log_IMU.gyr_y	= buf_gyr.y;
+			log_msg.body.log_IMU.gyr_z	= buf_gyr.z;
+			log_msg.body.log_IMU.mag_x	= buf_mag.x;
+			log_msg.body.log_IMU.mag_y	= buf_mag.y;
+			log_msg.body.log_IMU.mag_z	= buf_mag.z;
+
+			log_msg.body.log_IMU.acc_time = buf_acc.timestamp;
+			//log_msg.body.log_IMU.gyr_time = buf_gyr.timestamp;
+			//TEMP
+			log_msg.body.log_IMU.gyr_time = hrt_absolute_time();
+			log_msg.body.log_IMU.mag_time = buf_mag.timestamp;
+
+			LOGBUFFER_WRITE_AND_COUNT(IMU);
+		} else if(ret == 0 ) //time out
+		{
+			usleep(5);
+			goto re_in;
+		} else if(ret < 0 )
+		{
+			usleep(1000);
 			continue;
 		}
 
-
-//t2 = hrt_absolute_time();
-//printf("\tTime is: %lld\t%lld\t%lld\n", t3, t1, t0);
 		if (!logging_enabled) {
 //FIXME
 //			continue;
 		}
-		//所有的传感器数据读正确，拷贝数据
-		log_msg.msg_type = LOG_IMU_MSG;
-		log_msg.body.log_IMU.acc_x    = buf_acc.x;
-		log_msg.body.log_IMU.acc_y    = buf_acc.y;
-		log_msg.body.log_IMU.acc_z    = buf_acc.z;
-		log_msg.body.log_IMU.gyr_x   = buf_gyr.x;
-		log_msg.body.log_IMU.gyr_y   = buf_gyr.y;
-		log_msg.body.log_IMU.gyr_z   = buf_gyr.z;
-		log_msg.body.log_IMU.mag_x    = buf_mag.x;
-		log_msg.body.log_IMU.mag_y    = buf_mag.y;
-		log_msg.body.log_IMU.mag_z    = buf_mag.z;
-		
-		/*log_msg.body.log_IMU.acc_scaling = buf_acc.scaling;
-		log_msg.body.log_IMU.gyr_scaling = buf_gyr.scaling;
-		log_msg.body.log_IMU.mag_scaling = buf_mag.scaling;
-		
-		log_msg.body.log_IMU.acc_dt = buf_acc.integral_dt;
-		log_msg.body.log_IMU.gyr_dt = buf_gyr.integral_dt;*/
-		log_msg.body.log_IMU.acc_time = buf_acc.timestamp;
-		log_msg.body.log_IMU.gyr_time = buf_gyr.timestamp;
-		log_msg.body.log_IMU.mag_time = buf_mag.timestamp;
-		
-		/*log_msg.body.log_IMU.acc_x_raw = buf_acc.x_raw;
-		log_msg.body.log_IMU.acc_y_raw = buf_acc.y_raw;
-		log_msg.body.log_IMU.acc_Z_raw = buf_acc.z_raw;
-		log_msg.body.log_IMU.gyr_x_raw = buf_gyr.x_raw;
-		log_msg.body.log_IMU.gyr_y_raw = buf_gyr.y_raw;
-		log_msg.body.log_IMU.gyr_Z_raw = buf_gyr.z_raw;
-		log_msg.body.log_IMU.mag_x_raw = buf_mag.x_raw;
-		log_msg.body.log_IMU.mag_y_raw = buf_mag.y_raw;
-		log_msg.body.log_IMU.mag_Z_raw = buf_mag.z_raw;*/
-//printf("\tTime stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.time_acc, log_msg.body.log_IMU.time_gyr, log_msg.body.log_IMU.time_mag);
-//printf("\tACCEL accel: x:%8.4f\ty:%8.4f\tz:%8.4f\n", (double)(buf_acc.x), (double)(buf_acc.y), (double)(buf_acc.z));
+
+//printf("\tTime stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
 #undef DEBUG_PRN
 //#define DEBUG_PRN
 #ifdef DEBUG_PRN
-//#if 0
 		printf("\tACCEL accel: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_acc.x)), *((int *)&(buf_acc.y)), *((int *)&(buf_acc.z)));
 		printf("\tGYRO rates: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_gyr.x)), *((int *)&(buf_gyr.y)), *((int *)&(buf_gyr.z)));
 		printf("\tMAG values: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_mag.x)), *((int *)&(buf_mag.y)), *((int *)&(buf_mag.z)));
 		printf("\tTime stamp is: %llX\t%llX\t%llX\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
 #endif
 
-		LOGBUFFER_WRITE_AND_COUNT(IMU);
-
 //t3 = hrt_absolute_time();
+		memset(&buf_gps_pos, 0, sizeof(buf_gps_pos));
 		gps_pos_updated = copy_if_updated(ORB_ID(vehicle_gps_position), &gps_sub, &buf_gps_pos);
 		if (gps_pos_updated) 
 		{
@@ -1493,6 +1432,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			}
 
 			{
+				memset(&log_msg.body.log_GPS, 0, sizeof(log_msg.body.log_GPS));
 				log_msg.msg_type 				= LOG_GPS_MSG;
 				log_msg.body.log_GPS.time_stamp = buf_gps_pos.timestamp_position;
 				log_msg.body.log_GPS.time_gps	= buf_gps_pos.time_utc_usec;
@@ -1513,7 +1453,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			printf("\tGPS pos is not update\n");
 #endif	
 		}
-//t4 = hrt_absolute_time();
+
 		//FIXME 这一部分去掉
 		if ((poll_counter + 1) % poll_to_logging_factor == 0) {
 			poll_counter = 0;
@@ -1522,7 +1462,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			poll_counter++;
 //			continue;
 		}
-//t5 = hrt_absolute_time();
+
 		pthread_mutex_lock(&logbuffer_mutex);
 
 		/* signal the other thread new data, but not yet unlock */
@@ -1530,17 +1470,14 @@ int sdlog2_thread_main(int argc, char *argv[])
 			/* only request write if several packets can be written at once */
 			pthread_cond_signal(&logbuffer_cond);
 		}
-//t6 = hrt_absolute_time();
+
 		/* unlock, now the writer thread may run */
 		pthread_mutex_unlock(&logbuffer_mutex);
-//t7 = hrt_absolute_time();
-//printf("Time: %lld  %lld  %lld  %lld  %lld  %lld  %lld  %lld  %lld\n", t0, t1, t2, t3, t4, t5, t6, t7, t8);
+
 //#ifdef DEBUG_PRN
 #if 0
 //printf("GPS Time stamp is: %lld\tUTC Time is: %lld\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
 //printf("GPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
-printf("Sensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
-//printf("DT_AC: %lld  DT_GY: %lld\n", buf_acc.integral_dt, buf_gyr.integral_dt);
 #endif
 //t8 = hrt_absolute_time();
 		c++;
@@ -1555,7 +1492,7 @@ printf("Sensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, 
 				led_off(1);
 				led_toggle(3);
 			}
-			c=0;
+			c = 0;
 		}
 
 		/*FIXME:to publish the position here*/
@@ -1563,6 +1500,23 @@ printf("Sensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, 
 			buf_pos.timestamp = buf_acc.timestamp;
 			orb_publish(ORB_ID(noitom_pos), pos_pub, &buf_pos);
 		}
+
+		//int t = 10000 - 1060 - 58 - 59; //
+		//int t = 10000 - 1000; //
+		//int t = 10000;  //11065
+		//int t = 9000 - 500; //10062.74332
+		//int t = 9000 - 800; //10057.77644
+		//int t = 7000; //8049.78962
+		//int t = 5000; //6038.497287
+		//int t = 6000; //7043.684926
+		//int t = 1000;
+		int t = 8970;
+
+		t1 = hrt_absolute_time();
+		if((t1 - t0) < t)
+			usleep(t - (t1 - t0));
+		else
+			usleep(t);
 	}
 
 	if (logging_enabled) {
@@ -1576,10 +1530,6 @@ printf("Sensors Time stamp: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, 
 	logbuffer_free(&lb);
 
 	thread_running = false;
-
-	px4_close(fd_acc);
-	px4_close(fd_gyr);
-	px4_close(fd_mag);
 
 	return 0;
 }
