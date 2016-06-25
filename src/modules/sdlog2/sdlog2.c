@@ -136,6 +136,7 @@
 #include "logbuffer.h"
 #include "sdlog2_format.h"
 #include "sdlog2_messages.h"
+#include "sflib_api.h"
 
 #include <drivers/drv_led.h>
 extern void led_toggle(int led);
@@ -663,7 +664,7 @@ static int possender_thread(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	uint8_t sample_uart2[100] = {'U', 'A', 'R', 'T', '1', ' ', '#', '\r', '\n'};
+	uint8_t sample_uart2[50] = {'U', 'A', 'R', 'T', '1', ' ', '#', '\r', '\n'};
 
 	while(true)
 	{
@@ -678,7 +679,7 @@ static int possender_thread(int argc, char *argv[])
 		}
 
 		write(fd_wifi, sample_uart2, sizeof(sample_uart2));
-		//usleep(500000);
+		usleep(60000);
 		//printf("possender_thread\n");
 	}
 
@@ -1043,13 +1044,16 @@ bool copy_if_updated_multi(orb_id_t topic, int multi_instance, int *handle, void
 	return updated;
 }
 //#endif
-
+//#include "/home/powerain/tmp/lib/f.h"
 //FIXME:使用union节省空间
 struct accel_report buf_acc;
 struct gyro_report buf_gyr;
 struct mag_report buf_mag;
 int sdlog2_thread_main(int argc, char *argv[])
 {
+	//SFLibInstance tt;
+	//CreatSFLib(&tt);
+	//fun();
 	//powerain
 	struct noitom_pos_s buf_pos;
 	memset(&buf_pos, 0, sizeof(buf_pos));
@@ -1061,9 +1065,9 @@ int sdlog2_thread_main(int argc, char *argv[])
 	gyr_sub = orb_subscribe(ORB_ID(sensor_gyro));
 
 	px4_pollfd_struct_t fds[] = {
+		{ .fd = gyr_sub, .events = POLLIN}, /*在9250驱动中,gyr后发出，只要poll到gyr，则认为acc也准备好*/
 		{ .fd = mag_sub, .events = POLLIN},
 		{ .fd = acc_sub, .events = POLLIN},
-		{ .fd = gyr_sub, .events = POLLIN},
 	};
 	memset(&buf_mag, 0, sizeof(buf_mag));
 	memset(&buf_acc, 0, sizeof(buf_acc));
@@ -1355,8 +1359,10 @@ int sdlog2_thread_main(int argc, char *argv[])
 
 re_in:
 		t0 = hrt_absolute_time();
-		/*wait for 5 ms*/
-		ret = px4_poll(fds, (sizeof(fds) / sizeof(fds[0])), 5);
+
+		//在9250驱动中,gyr后发出，只要poll到gyr，则认为acc也准备好，所以只poll gyr
+		//wait for 2 ms
+		ret = px4_poll(fds, 2, 2);
 
 		if(ret > 0)
 		{
@@ -1365,37 +1371,51 @@ re_in:
 			memset(&buf_gyr, 0, sizeof(buf_gyr));
 			memset(&log_msg.body.log_IMU, 0, sizeof(log_msg.body.log_IMU));
 
-			orb_copy(ORB_ID(sensor_mag), mag_sub, &buf_mag);
-			orb_copy(ORB_ID(sensor_accel), acc_sub, &buf_acc);
-			orb_copy(ORB_ID(sensor_gyro), gyr_sub, &buf_gyr);
-			//printf("ORB Time stamp is: %lld\n", buf_mag.timestamp);
-
-			//所有的传感器数据读正确，拷贝数据
 			log_msg.msg_type = LOG_IMU_MSG;
-			log_msg.body.log_IMU.acc_x	= buf_acc.x;
-			log_msg.body.log_IMU.acc_y	= buf_acc.y;
-			log_msg.body.log_IMU.acc_z	= buf_acc.z;
-			log_msg.body.log_IMU.gyr_x	= buf_gyr.x;
-			log_msg.body.log_IMU.gyr_y	= buf_gyr.y;
-			log_msg.body.log_IMU.gyr_z	= buf_gyr.z;
-			log_msg.body.log_IMU.mag_x	= buf_mag.x;
-			log_msg.body.log_IMU.mag_y	= buf_mag.y;
-			log_msg.body.log_IMU.mag_z	= buf_mag.z;
 
-			log_msg.body.log_IMU.acc_time = buf_acc.timestamp;
-			//log_msg.body.log_IMU.gyr_time = buf_gyr.timestamp;
-			//TEMP
-			log_msg.body.log_IMU.gyr_time = hrt_absolute_time();
-			log_msg.body.log_IMU.mag_time = buf_mag.timestamp;
+			if (fds[0].revents & POLLIN)
+			{
+				orb_copy(ORB_ID(sensor_accel), acc_sub, &buf_acc);
+				orb_copy(ORB_ID(sensor_gyro), gyr_sub, &buf_gyr);
+
+				log_msg.body.log_IMU.acc_x		= buf_acc.x;
+				log_msg.body.log_IMU.acc_y		= buf_acc.y;
+				log_msg.body.log_IMU.acc_z		= buf_acc.z;
+				log_msg.body.log_IMU.acc_time	= buf_acc.timestamp;
+
+				log_msg.body.log_IMU.gyr_x		= buf_gyr.x;
+				log_msg.body.log_IMU.gyr_y		= buf_gyr.y;
+				log_msg.body.log_IMU.gyr_z		= buf_gyr.z;
+				//log_msg.body.log_IMU.gyr_time	= buf_gyr.timestamp;
+				log_msg.body.log_IMU.gyr_time = buf_acc.integral_dt;
+			}
+			//log_msg.body.log_IMU.gyr_time = hrt_absolute_time();
+			//printf("acc dt %lld, gyr dt %lld %lld\n", buf_acc.integral_dt, buf_gyr.integral_dt, t0);
+			if (fds[1].revents & POLLIN)
+			{
+				orb_copy(ORB_ID(sensor_mag), mag_sub, &buf_mag);
+				//printf("ORB Time stamp is: %lld\n", buf_mag.timestamp);
+				//float len = sqrtf(buf_mag.x * buf_mag.x + buf_mag.y * buf_mag.y + buf_mag.z * buf_mag.z);
+
+				//if (len > 0.25f && len < 3.0f)
+				{
+					log_msg.body.log_IMU.mag_x		= buf_mag.x;
+					log_msg.body.log_IMU.mag_y		= buf_mag.y;
+					log_msg.body.log_IMU.mag_z		= buf_mag.z;
+					log_msg.body.log_IMU.mag_time	= buf_mag.timestamp;
+					//printf("%f, %f, %f", (double)buf_mag.x, (double)buf_mag.y, (double)buf_mag.z);
+				}
+			}
 
 			LOGBUFFER_WRITE_AND_COUNT(IMU);
 		} else if(ret == 0 ) //time out
 		{
-			usleep(5);
+			usleep(500);
 			goto re_in;
 		} else if(ret < 0 )
 		{
-			usleep(1000);
+			usleep(500);
+			//goto re_in;
 			continue;
 		}
 
@@ -1404,7 +1424,7 @@ re_in:
 //			continue;
 		}
 
-//printf("\tTime stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
+//printf("Time stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
 #undef DEBUG_PRN
 //#define DEBUG_PRN
 #ifdef DEBUG_PRN
@@ -1510,7 +1530,9 @@ re_in:
 		//int t = 5000; //6038.497287
 		//int t = 6000; //7043.684926
 		//int t = 1000;
-		int t = 8970;
+		//int t = 8970;
+		//int t = 9000;
+		int t = 2000;
 
 		t1 = hrt_absolute_time();
 		if((t1 - t0) < t)

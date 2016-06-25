@@ -253,8 +253,13 @@ MPU9250_mag::measure(struct ak8963_regs data)
 {
 	bool mag_notify = true;
 
-	if (check_duplicate((uint8_t *)&data.x) && !(data.st1 & 0x02)) {
+	//if (check_duplicate((uint8_t *)&data.x) && !(data.st1 & 0x02)) {
+	if (check_duplicate((uint8_t *)&data.x)) {
 		perf_count(_mag_duplicates);
+		return;
+	}
+
+	if (!(data.st1 & 0x01)) {
 		return;
 	}
 
@@ -269,6 +274,7 @@ MPU9250_mag::measure(struct ak8963_regs data)
 	 */
 	if (data.st2 & 0x08) {
 		perf_count(_mag_overflows);
+		return;
 	}
 
 	mag_report	mrb;
@@ -607,6 +613,11 @@ MPU9250_mag::ak8963_setup(void)
 	passthrough_write(AK8963REG_CNTL1, AK8963_CONTINUOUS_MODE2 | AK8963_16BIT_ADC);
 
 	set_passthrough(AK8963REG_ST1, sizeof(struct ak8963_regs));
+
+	_parent->write_reg(MPUREG_I2C_SLV4_CTRL, 0x09);
+	usleep(1000);
+	_parent->write_reg(MPUREG_I2C_MST_DELAY_CTRL, 0x81);
+	usleep(100000);
 
 	return true;
 }

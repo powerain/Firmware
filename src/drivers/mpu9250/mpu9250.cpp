@@ -175,7 +175,9 @@
 #define MPU_WHOAMI_9250			0x71
 
 #define MPU9250_ACCEL_DEFAULT_RATE	1000
-#define MPU9250_ACCEL_MAX_OUTPUT_RATE			280
+//#define MPU9250_ACCEL_MAX_OUTPUT_RATE			280
+//#define MPU9250_ACCEL_MAX_OUTPUT_RATE			1000
+#define MPU9250_ACCEL_MAX_OUTPUT_RATE			105
 #define MPU9250_ACCEL_DEFAULT_DRIVER_FILTER_FREQ 30
 #define MPU9250_GYRO_DEFAULT_RATE	1000
 /* rates need to be the same between accel and gyro */
@@ -192,7 +194,9 @@
   accelerometer values. This time reduction is enough to cope with
   worst case timing jitter due to other timers
  */
-#define MPU9250_TIMER_REDUCTION				200
+//#define MPU9250_TIMER_REDUCTION				200
+//#define MPU9250_TIMER_REDUCTION				20
+#define MPU9250_TIMER_REDUCTION				0
 
 
 /*
@@ -594,8 +598,6 @@ MPU9250::read(struct file *filp, char *buffer, size_t buflen)
 		return -ENOSPC;
 	}
 
-	//powerain
-	//::printf("\nsssssss%d\n", _call_interval);
 	/* if automatic measurement is not enabled, get a fresh measurement into the buffer */
 	if (_call_interval == 0) {
 		_accel_reports->flush();
@@ -754,7 +756,6 @@ MPU9250::gyro_read(struct file *filp, char *buffer, size_t buflen)
 		return -ENOSPC;
 	}
 
-	//::printf("\nsssssss%d\n", _call_interval);
 	/* if automatic measurement is not enabled, get a fresh measurement into the buffer */
 	if (_call_interval == 0) {
 		_gyro_reports->flush();
