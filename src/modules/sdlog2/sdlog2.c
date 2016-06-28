@@ -634,8 +634,8 @@ struct upload_data {
 	// float 	yaw;
 	// float 	pitch;
 	// float 	roll;
-	float		longitude;
-	float		latitude;
+	double		longitude;
+	double		latitude;
 	float		height;
 	float		ve;
 	float		vn;
@@ -1609,8 +1609,8 @@ re_in:
 
 					memset(&buf_pos, 0, sizeof(buf_pos));
 					buf_pos.timestamp	= out_data.timestamp_us;
-					buf_pos.lon			= (float)out_data.longitude;
-					buf_pos.lat			= (float)out_data.latitude;
+					buf_pos.lon			= out_data.longitude;
+					buf_pos.lat			= out_data.latitude;
 					buf_pos.height		= out_data.height;
 					buf_pos.ve			= out_data.ve;
 					buf_pos.vn			= out_data.vn;
