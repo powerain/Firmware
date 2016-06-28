@@ -176,6 +176,10 @@ set(config_extra_builtin_cmds
 #	uavcan_stm32_driver
 #	)
 
+set(config_extra_libs
+	/home/powerain/tmp/sflib.a
+	)
+
 set(config_io_extra_libs
 	)
 

@@ -131,6 +131,7 @@
 #include <drivers/drv_accel.h>
 #include <drivers/drv_mag.h>
 #include <drivers/drv_baro.h>
+#include <crc32.h>
 /****************************************************************************/
 
 #include "logbuffer.h"
@@ -623,8 +624,32 @@ int open_perf_file(const char* str)
 	return fd;
 }
 
+#pragma pack(push, 1)
+struct upload_data {
+	uint64_t	timestamp;
+	// float 	Quat0;
+	// float 	Quat1;
+	// float 	Quat2;
+	// float 	Quat3;
+	// float 	yaw;
+	// float 	pitch;
+	// float 	roll;
+	float		longitude;
+	float		latitude;
+	float		height;
+	float		ve;
+	float		vn;
+	float		vu;
+	uint8_t		id;
+	uint32_t	crc32;
+};
+#pragma pack(pop)
+
 static int possender_thread(int argc, char *argv[])
 {
+	struct upload_data	buf_upload;
+	struct noitom_pos_s buf_pos;
+	//memset(&buf_pos, 0, sizeof(buf_pos));
 	int ret = 0;
 
 	int pos_sub = orb_subscribe(ORB_ID(noitom_pos));
@@ -632,8 +657,6 @@ static int possender_thread(int argc, char *argv[])
 	{
 		{ .fd = pos_sub, .events = POLLIN},
 	};
-	struct noitom_pos_s buf_pos;
-	memset(&buf_pos, 0, sizeof(buf_pos));
 	
 	int fd_wifi;
 	fd_wifi = open("/dev/ttyS0",  O_RDWR | O_NONBLOCK | O_NOCTTY);
@@ -664,22 +687,34 @@ static int possender_thread(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	uint8_t sample_uart2[50] = {'U', 'A', 'R', 'T', '1', ' ', '#', '\r', '\n'};
+	//uint8_t sample_uart2[50] = {'U', 'A', 'R', 'T', '1', ' ', '#', '\r', '\n'};
 
 	while(true)
 	{
 		/* wait for sensor update of 1 file descriptor for 1000 ms (1 second) */
-		int ret = px4_poll(fds, 1, 1000);
+		ret = px4_poll(fds, 1, 1000);
 		if(ret > 0)
 		{
+			memset(&buf_upload, 0, sizeof(buf_upload));
+			memset(&buf_pos, 0, sizeof(buf_pos));
 			orb_copy(ORB_ID(noitom_pos), pos_sub, &buf_pos);
 			//printf("POS Time stamp is: %lld\n", buf_pos.timestamp);
-			sprintf((char *)sample_uart2, "POS Time stamp is: %lld\r\n", buf_pos.timestamp);
+			buf_upload.timestamp	= buf_pos.timestamp;
+			buf_upload.longitude	= buf_pos.lon;
+			buf_upload.latitude		= buf_pos.lat;
+			buf_upload.height		= buf_pos.height;
+			buf_upload.ve			= buf_pos.ve;
+			buf_upload.vn			= buf_pos.vn;
+			buf_upload.vu			= buf_pos.vu;
+			buf_upload.id			= 0;
+			buf_upload.crc32		= crc32((uint8_t *)&buf_upload, sizeof(buf_upload) - sizeof(buf_upload.crc32));
+
+			//sprintf((char *)sample_uart2, "POS Time stamp is: %lld\r\n", buf_pos.timestamp);
 			//printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
+			write(fd_wifi, (uint8_t *)&buf_upload, sizeof(buf_upload));
 		}
 
-		write(fd_wifi, sample_uart2, sizeof(sample_uart2));
-		usleep(60000);
+		//usleep(60000);
 		//printf("possender_thread\n");
 	}
 
@@ -1049,12 +1084,23 @@ bool copy_if_updated_multi(orb_id_t topic, int multi_instance, int *handle, void
 struct accel_report buf_acc;
 struct gyro_report buf_gyr;
 struct mag_report buf_mag;
+
+struct OutputData out_data;
 int sdlog2_thread_main(int argc, char *argv[])
 {
-	//SFLibInstance tt;
-	//CreatSFLib(&tt);
 	//fun();
 	//powerain
+	SFLibInstance sflib_in;
+	sflib_in.sf_type	= SF_IG_LC;
+	sflib_in.index		= 0;
+	CreatSFLib(&sflib_in);
+
+	uint64_t time_mag	= 0;
+	bool init_geo		= false;
+	struct InputImuData in_imu;
+	in_imu.magdata_new = false;
+	struct InputGpsData in_gps;
+
 	struct noitom_pos_s buf_pos;
 	memset(&buf_pos, 0, sizeof(buf_pos));
 	orb_advert_t pos_pub = orb_advertise(ORB_ID(noitom_pos), &buf_pos);
@@ -1285,6 +1331,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			struct log_TIME_s log_TIME;
 			struct log_IMU_s  log_IMU;
 			struct log_GPS_s  log_GPS;
+			struct log_SFO_s log_SFO;
 		} body;
 	} log_msg = {
 		LOG_PACKET_HEADER_INIT(0)
@@ -1373,6 +1420,29 @@ re_in:
 
 			log_msg.msg_type = LOG_IMU_MSG;
 
+			//log_msg.body.log_IMU.gyr_time = hrt_absolute_time();
+			//printf("acc dt %lld, gyr dt %lld %lld\n", buf_acc.integral_dt, buf_gyr.integral_dt, t0);
+			if (fds[1].revents & POLLIN)
+			{
+				orb_copy(ORB_ID(sensor_mag), mag_sub, &buf_mag);
+				//printf("ORB Time stamp is: %lld\n", buf_mag.timestamp);
+				//float len = sqrtf(buf_mag.x * buf_mag.x + buf_mag.y * buf_mag.y + buf_mag.z * buf_mag.z);
+				//if (len > 0.25f && len < 3.0f)
+				/*{
+					log_msg.body.log_IMU.mag_x		= buf_mag.x;
+					log_msg.body.log_IMU.mag_y		= buf_mag.y;
+					log_msg.body.log_IMU.mag_z		= buf_mag.z;
+					log_msg.body.log_IMU.mag_time	= buf_mag.timestamp;
+					//printf("%f, %f, %f", (double)buf_mag.x, (double)buf_mag.y, (double)buf_mag.z);
+				}*/
+
+				in_imu.Mag_measure[0] = buf_mag.x;
+				in_imu.Mag_measure[1] = buf_mag.y;
+				in_imu.Mag_measure[2] = buf_mag.z;
+				in_imu.magdata_new = true;
+				time_mag = buf_mag.timestamp;
+			}
+
 			if (fds[0].revents & POLLIN)
 			{
 				orb_copy(ORB_ID(sensor_accel), acc_sub, &buf_acc);
@@ -1387,32 +1457,38 @@ re_in:
 				log_msg.body.log_IMU.gyr_y		= buf_gyr.y;
 				log_msg.body.log_IMU.gyr_z		= buf_gyr.z;
 				//log_msg.body.log_IMU.gyr_time	= buf_gyr.timestamp;
-				log_msg.body.log_IMU.gyr_time = buf_acc.integral_dt;
-			}
-			//log_msg.body.log_IMU.gyr_time = hrt_absolute_time();
-			//printf("acc dt %lld, gyr dt %lld %lld\n", buf_acc.integral_dt, buf_gyr.integral_dt, t0);
-			if (fds[1].revents & POLLIN)
-			{
-				orb_copy(ORB_ID(sensor_mag), mag_sub, &buf_mag);
-				//printf("ORB Time stamp is: %lld\n", buf_mag.timestamp);
-				//float len = sqrtf(buf_mag.x * buf_mag.x + buf_mag.y * buf_mag.y + buf_mag.z * buf_mag.z);
+				log_msg.body.log_IMU.gyr_time	= buf_acc.integral_dt;
 
-				//if (len > 0.25f && len < 3.0f)
+				if (in_imu.magdata_new)
 				{
-					log_msg.body.log_IMU.mag_x		= buf_mag.x;
-					log_msg.body.log_IMU.mag_y		= buf_mag.y;
-					log_msg.body.log_IMU.mag_z		= buf_mag.z;
-					log_msg.body.log_IMU.mag_time	= buf_mag.timestamp;
-					//printf("%f, %f, %f", (double)buf_mag.x, (double)buf_mag.y, (double)buf_mag.z);
+					log_msg.body.log_IMU.mag_x		= in_imu.Mag_measure[0];
+					log_msg.body.log_IMU.mag_y		= in_imu.Mag_measure[1];
+					log_msg.body.log_IMU.mag_z		= in_imu.Mag_measure[2];
+					log_msg.body.log_IMU.mag_time	= time_mag;
 				}
+
+				if (init_geo)
+				{
+					in_imu.timestamp_us					= buf_acc.timestamp;
+					in_imu.IncrementAngle_Measure[0]	= buf_gyr.x_integral;
+					in_imu.IncrementAngle_Measure[1]	= buf_gyr.y_integral;
+					in_imu.IncrementAngle_Measure[2]	= buf_gyr.z_integral;
+					in_imu.IncrementVel_Measure[0]		= buf_acc.x_integral;
+					in_imu.IncrementVel_Measure[1]		= buf_acc.y_integral;
+					in_imu.IncrementVel_Measure[2]		= buf_acc.z_integral;
+
+					CallSFImuProc(&sflib_in, &in_imu);
+				}
+
+				in_imu.magdata_new = false;
+				LOGBUFFER_WRITE_AND_COUNT(IMU);
 			}
 
-			LOGBUFFER_WRITE_AND_COUNT(IMU);
-		} else if(ret == 0 ) //time out
+		} else if(ret == 0) //time out
 		{
 			usleep(500);
 			goto re_in;
-		} else if(ret < 0 )
+		} else if(ret < 0)
 		{
 			usleep(500);
 			//goto re_in;
@@ -1443,12 +1519,12 @@ re_in:
 			printf("\tGPS Time stamp is: %llX\tUTC Time is: %llX\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
 			printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
 #endif			
-			if(buf_gps_pos.satellites_used > 0)
+			if (buf_gps_pos.satellites_used > 0)
 			{
 				gps_ok = true;
 			} else
 			{
-				 gps_ok = false;
+				gps_ok = false;
 			}
 
 			{
@@ -1466,6 +1542,28 @@ re_in:
 				log_msg.body.log_GPS.sats		= buf_gps_pos.satellites_used;
 				LOGBUFFER_WRITE_AND_COUNT(GPS);
 			}
+
+			if (!init_geo && gps_ok)
+			{
+				init_geo = InitSFLib_Geo(&sflib_in, (double)(buf_gps_pos.lon * 1E-7),
+					(double)(buf_gps_pos.lat * 1E-7), (float)(buf_gps_pos.alt * 1E-3),
+					buf_gps_pos.timestamp_position);
+			}
+
+			if (init_geo)
+			{
+				in_gps.timestamp_us	= buf_gps_pos.timestamp_position;
+				in_gps.longitude	= (double)(buf_gps_pos.lon * 1E-7);
+				in_gps.latitude		= (double)(buf_gps_pos.lat * 1E-7);
+				in_gps.height		= (float)(buf_gps_pos.alt * 1E-3);
+				in_gps.ve			= buf_gps_pos.vel_e_m_s;
+				in_gps.vn			= buf_gps_pos.vel_n_m_s;
+				in_gps.vu			= buf_gps_pos.vel_d_m_s;
+				in_gps.sat_num		= buf_gps_pos.satellites_used;
+				in_gps.valid		= (buf_gps_pos.satellites_used > 0);
+
+				CallSFGpsProc(&sflib_in, &in_gps);
+			}
 		}
 		else
 		{
@@ -1473,6 +1571,60 @@ re_in:
 			printf("\tGPS pos is not update\n");
 #endif	
 		}
+		c++;
+		if (c % 50 == 0)
+		{
+			if (gps_ok)
+			{
+				led_off(3);
+				led_toggle(1);
+			} else
+			{
+				led_off(1);
+				led_toggle(3);
+			}
+			c = 0;
+
+			if (init_geo)
+			{
+				if (GetSFResult(&sflib_in, &out_data))
+				{
+					memset(&log_msg.body.log_SFO, 0, sizeof(log_msg.body.log_SFO));
+					log_msg.msg_type					= LOG_SFO_MSG;
+					log_msg.body.log_SFO.timestamp_us	= out_data.timestamp_us;
+					log_msg.body.log_SFO.Quat0			= out_data.Quat[0];
+					log_msg.body.log_SFO.Quat1			= out_data.Quat[1];
+					log_msg.body.log_SFO.Quat2			= out_data.Quat[2];
+					log_msg.body.log_SFO.Quat3			= out_data.Quat[3];
+					log_msg.body.log_SFO.yaw			= out_data.yaw;
+					log_msg.body.log_SFO.pitch			= out_data.pitch;
+					log_msg.body.log_SFO.roll			= out_data.roll;
+					log_msg.body.log_SFO.longitude		= (float)out_data.longitude;
+					log_msg.body.log_SFO.latitude		= (float)out_data.latitude;
+					log_msg.body.log_SFO.height			= out_data.height;
+					log_msg.body.log_SFO.ve				= out_data.ve;
+					log_msg.body.log_SFO.vn				= out_data.vn;
+					log_msg.body.log_SFO.vu				= out_data.vu;
+					LOGBUFFER_WRITE_AND_COUNT(SFO);
+
+					memset(&buf_pos, 0, sizeof(buf_pos));
+					buf_pos.timestamp	= out_data.timestamp_us;
+					buf_pos.lon			= (float)out_data.longitude;
+					buf_pos.lat			= (float)out_data.latitude;
+					buf_pos.height		= out_data.height;
+					buf_pos.ve			= out_data.ve;
+					buf_pos.vn			= out_data.vn;
+					buf_pos.vu			= out_data.vu;
+					orb_publish(ORB_ID(noitom_pos), pos_pub, &buf_pos);
+				}
+			}
+		}
+
+		/*FIXME:to publish the position here*/
+		//{
+			//buf_pos.timestamp = buf_acc.timestamp;
+			//orb_publish(ORB_ID(noitom_pos), pos_pub, &buf_pos);
+		//}
 
 		//FIXME 这一部分去掉
 		if ((poll_counter + 1) % poll_to_logging_factor == 0) {
@@ -1499,38 +1651,6 @@ re_in:
 //printf("GPS Time stamp is: %lld\tUTC Time is: %lld\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
 //printf("GPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
 #endif
-//t8 = hrt_absolute_time();
-		c++;
-		if(c % 50 == 0)
-		{
-			if(gps_ok)
-			{
-				led_off(3);
-				led_toggle(1);
-			} else
-			{
-				led_off(1);
-				led_toggle(3);
-			}
-			c = 0;
-		}
-
-		/*FIXME:to publish the position here*/
-		{
-			buf_pos.timestamp = buf_acc.timestamp;
-			orb_publish(ORB_ID(noitom_pos), pos_pub, &buf_pos);
-		}
-
-		//int t = 10000 - 1060 - 58 - 59; //
-		//int t = 10000 - 1000; //
-		//int t = 10000;  //11065
-		//int t = 9000 - 500; //10062.74332
-		//int t = 9000 - 800; //10057.77644
-		//int t = 7000; //8049.78962
-		//int t = 5000; //6038.497287
-		//int t = 6000; //7043.684926
-		//int t = 1000;
-		//int t = 8970;
 		//int t = 9000;
 		int t = 2000;
 
@@ -1552,6 +1672,8 @@ re_in:
 	logbuffer_free(&lb);
 
 	thread_running = false;
+
+	DestroySFLib(&sflib_in);
 
 	return 0;
 }
