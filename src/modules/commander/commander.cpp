@@ -2932,13 +2932,13 @@ control_status_leds(vehicle_status_s *status_local, const actuator_armed_s *actu
 	} else if (actuator_armed->ready_to_arm) {
 		/* ready to arm, blink at 1Hz */
 		if (leds_counter % 20 == 0) {
-			led_toggle(LED_BLUE);
+			//led_toggle(LED_BLUE);
 		}
 
 	} else {
 		/* not ready to arm, blink at 10Hz */
 		if (leds_counter % 2 == 0) {
-			led_toggle(LED_BLUE);
+			//led_toggle(LED_BLUE);
 		}
 	}
 
@@ -2947,11 +2947,11 @@ control_status_leds(vehicle_status_s *status_local, const actuator_armed_s *actu
 	/* give system warnings on error LED, XXX maybe add memory usage warning too */
 	if (status_local->load > 0.95f) {
 		if (leds_counter % 2 == 0) {
-			led_toggle(LED_AMBER);
+			//led_toggle(LED_AMBER);
 		}
 
 	} else {
-		led_off(LED_AMBER);
+		//led_off(LED_AMBER);
 	}
 
 	leds_counter++;
