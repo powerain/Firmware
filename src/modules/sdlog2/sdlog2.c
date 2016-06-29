@@ -641,16 +641,22 @@ struct upload_data {
 	float		vn;
 	float		vu;
 	uint8_t		id;
+	uint32_t	num;
 	uint32_t	crc32;
 };
 #pragma pack(pop)
 
+#include "iniRD.h"
 static int possender_thread(int argc, char *argv[])
 {
+	char *para = GetIniKeyString("WMODE","mode","/fs/microsd/USRwifi.ini");
+	if (para != NULL)
+		printf("%s\n", para);
 	struct upload_data	buf_upload;
 	struct noitom_pos_s buf_pos;
 	//memset(&buf_pos, 0, sizeof(buf_pos));
 	int ret = 0;
+	uint32_t num = 0;
 
 	int pos_sub = orb_subscribe(ORB_ID(noitom_pos));
 	px4_pollfd_struct_t fds[] =
@@ -695,6 +701,7 @@ static int possender_thread(int argc, char *argv[])
 		ret = px4_poll(fds, 1, 1000);
 		if(ret > 0)
 		{
+			num++;
 			memset(&buf_upload, 0, sizeof(buf_upload));
 			memset(&buf_pos, 0, sizeof(buf_pos));
 			orb_copy(ORB_ID(noitom_pos), pos_sub, &buf_pos);
@@ -707,11 +714,13 @@ static int possender_thread(int argc, char *argv[])
 			buf_upload.vn			= buf_pos.vn;
 			buf_upload.vu			= buf_pos.vu;
 			buf_upload.id			= 0;
+			buf_upload.num			= num;
 			buf_upload.crc32		= crc32((uint8_t *)&buf_upload, sizeof(buf_upload) - sizeof(buf_upload.crc32));
 
 			//sprintf((char *)sample_uart2, "POS Time stamp is: %lld\r\n", buf_pos.timestamp);
 			//printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
 			write(fd_wifi, (uint8_t *)&buf_upload, sizeof(buf_upload));
+			printf("%d, lon:%8.4f, lat:%8.4f, height:%8.4f\n", num, buf_pos.lon, buf_pos.lat, (double)buf_pos.height);
 		}
 
 		//usleep(60000);
@@ -1079,7 +1088,7 @@ bool copy_if_updated_multi(orb_id_t topic, int multi_instance, int *handle, void
 	return updated;
 }
 //#endif
-//#include "/home/powerain/tmp/lib/f.h"
+
 //FIXME:使用union节省空间
 struct accel_report buf_acc;
 struct gyro_report buf_gyr;
@@ -1481,6 +1490,13 @@ re_in:
 				}
 
 				in_imu.magdata_new = false;
+/* 				printf("acc x:%8.4f y:%8.4f z:%8.4f, gyr x:%8.4f y:%8.4f z:%8.4f\n",
+					(double)log_msg.body.log_IMU.acc_x,
+					(double)log_msg.body.log_IMU.acc_y,
+					(double)log_msg.body.log_IMU.acc_z,
+					(double)log_msg.body.log_IMU.gyr_x,
+					(double)log_msg.body.log_IMU.gyr_y,
+					(double)log_msg.body.log_IMU.gyr_z); */
 				LOGBUFFER_WRITE_AND_COUNT(IMU);
 			}
 
@@ -1519,7 +1535,7 @@ re_in:
 			printf("\tGPS Time stamp is: %llX\tUTC Time is: %llX\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
 			printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
 #endif			
-			if (buf_gps_pos.satellites_used > 0)
+			if (buf_gps_pos.satellites_used >= 4)
 			{
 				gps_ok = true;
 			} else
@@ -1651,11 +1667,11 @@ re_in:
 //printf("GPS Time stamp is: %lld\tUTC Time is: %lld\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
 //printf("GPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
 #endif
-		//int t = 9000;
 		int t = 2000;
+		//int t = 500000;
 
 		t1 = hrt_absolute_time();
-		if((t1 - t0) < t)
+		if ((t1 - t0) < t)
 			usleep(t - (t1 - t0));
 		else
 			usleep(t);

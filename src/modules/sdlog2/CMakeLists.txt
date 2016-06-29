@@ -42,6 +42,7 @@ px4_add_module(
 	SRCS
 		sdlog2.c
 		logbuffer.c
+		iniRD.c
 	DEPENDS
 		platforms__common
 	)
