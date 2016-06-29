@@ -88,14 +88,14 @@ then
 	#
 	# Start system state indicator
 	#
-	if rgbled start
-	then
-	else
-		if blinkm start
-		then
-			blinkm systemstate
-		fi
-	fi
+	#if rgbled start
+	#then
+	#else
+	#	if blinkm start
+	#	then
+	#		blinkm systemstate
+	#	fi
+	#fi
 
 	# Currently unused, but might be useful down the road
 	#if pca8574 start
@@ -162,14 +162,14 @@ then
 	fi
 
 	# should set to 0.8 for mindpx-v2 borad.
-	if param compare INAV_LIDAR_ERR 0.5
-	then
-		if ver hwcmp MINDPX_V2
-		then
-			param set INAV_LIDAR_ERR 0.8
-			param save
-		fi
-	fi
+	#if param compare INAV_LIDAR_ERR 0.5
+	#then
+	#	if ver hwcmp MINDPX_V2
+	#	then
+	#		param set INAV_LIDAR_ERR 0.8
+	#		param save
+	#	fi
+	#fi
 
 	#
 	# Set parameters and env variables for selected AUTOSTART
