@@ -20,23 +20,23 @@ set(config_module_list
 	drivers/mpu9250
 	#drivers/hmc5883
 	#drivers/ms5611
-	drivers/mb12xx
-	drivers/srf02
-	drivers/sf0x
-	drivers/ll40ls
-	drivers/trone
+	#drivers/mb12xx
+	#drivers/srf02
+	#drivers/sf0x
+	#drivers/ll40ls
+	#drivers/trone
 	drivers/gps
-	drivers/pwm_out_sim
-	drivers/hott
-	drivers/hott/hott_telemetry
-	drivers/hott/hott_sensors
+	#drivers/pwm_out_sim
+	#drivers/hott
+	#drivers/hott/hott_telemetry
+	#drivers/hott/hott_sensors
 	#drivers/blinkm
-	drivers/airspeed
-	drivers/ets_airspeed
-	drivers/meas_airspeed
+	#drivers/airspeed
+	#drivers/ets_airspeed
+	#drivers/meas_airspeed
 	#drivers/frsky_telemetry
-	modules/sensors
-	drivers/mkblctrl
+	#modules/sensors
+	#drivers/mkblctrl
 	drivers/px4flow
 	drivers/oreoled
 	drivers/gimbal
