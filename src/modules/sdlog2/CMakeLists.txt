@@ -43,6 +43,10 @@ px4_add_module(
 		sdlog2.c
 		logbuffer.c
 		iniRD.c
+		magcal.c
+		wifi_usr.c
+		dictionary.c
+		iniparser.c
 	DEPENDS
 		platforms__common
 	)

@@ -204,8 +204,8 @@ struct log_SFO_s {
 	float yaw;
 	float pitch;
 	float roll;
-	float longitude;
-	float latitude;
+	int64_t longitude;
+	int64_t latitude;
 	float height;
 	float ve;
 	float vn;
@@ -702,7 +702,7 @@ static const struct log_format_s log_formats[] = {
 	//LOG_FORMAT(ATT, "fffffffffffff",	"qw,qx,qy,qz,Roll,Pitch,Yaw,RollRate,PitchRate,YawRate,GX,GY,GZ"),
 	//LOG_FORMAT(ATSP, "ffffffff",		"RollSP,PitchSP,YawSP,ThrustSP,qw,qx,qy,qz"),
 	LOG_FORMAT_S(IMU, IMU, "fffffffffQQQ",		"AccX,AccY,AccZ,GyrX,GyrY,GyrZ,MagX,MagY,MagZ,tA,tG,tM"),
-	LOG_FORMAT(SFO, "Qfffffffffffff",	 "TS,Q0,Q1,Q2,Q3,ya,pi,ro,Lon,Lat,Hei,Ve,Vn,Vu"),
+	LOG_FORMAT(SFO, "Qfffffffqqffff",	 "TS,Q0,Q1,Q2,Q3,ya,pi,ro,Lon,Lat,Hei,Ve,Vn,Vu"),
 	//LOG_FORMAT_S(IMU1, IMU, "ffffffffffff",		"AccX,AccY,AccZ,GyroX,GyroY,GyroZ,MagX,MagY,MagZ,tA,tG,tM"),
 	//LOG_FORMAT_S(IMU2, IMU, "ffffffffffff",		"AccX,AccY,AccZ,GyroX,GyroY,GyroZ,MagX,MagY,MagZ,tA,tG,tM"),
 	//LOG_FORMAT_S(SENS, SENS, "fffff",		"BaroPres,BaroAlt,BaroTemp,DiffPres,DiffPresFilt"),

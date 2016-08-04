@@ -1319,7 +1319,7 @@ MPU9250::measure()
 		return;
 	}
 
-	check_registers();
+	//check_registers();
 
 	if (check_duplicate(&mpu_report.accel_x[0])) {
 		return;

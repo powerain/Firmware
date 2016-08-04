@@ -66,7 +66,8 @@
 
 #include "mag.h"
 #include "mpu9250.h"
-
+//#include "magcal.h"
+#include "../../modules/sdlog2/magcal.h"
 
 /* in 16-bit sampling mode the mag resolution is 1.5 milli Gauss per bit */
 
@@ -148,6 +149,20 @@
 #define AK8963_14BIT_ADC        0x00
 #define AK8963_RESET            0x01
 
+// FIXME For TEMP
+/*double cpk[3][3] = {
+   1.0193564e+00,  -0.0000000e+00,   7.5268892e-03,
+   2.4735460e-02,   9.8814945e-01,  -1.4869160e-02,
+   0.0000000e+00,   0.0000000e+00,   9.9305243e-01,
+};
+double cpz[3] = {
+   2.4721785e-01,
+   9.5549758e-02,
+  -5.9838419e-01,
+
+};*/
+//extern double cpk[3][3];
+//extern double cpz[3];
 
 MPU9250_mag::MPU9250_mag(MPU9250 *parent, const char *path) :
 	CDev("MPU9250_mag", path),
@@ -298,6 +313,15 @@ MPU9250_mag::measure(struct ak8963_regs data)
 	mrb.x = ((xraw_f * _mag_range_scale * _mag_asa_x) - _mag_scale.x_offset) * _mag_scale.x_scale;
 	mrb.y = ((yraw_f * _mag_range_scale * _mag_asa_y) - _mag_scale.y_offset) * _mag_scale.y_scale;
 	mrb.z = ((zraw_f * _mag_range_scale * _mag_asa_z) - _mag_scale.z_offset) * _mag_scale.z_scale;
+
+	// FIX For TEMP
+	if (mag_cal_data)
+	{
+		mrb.x = cpk[0][0] * ((double)mrb.x - cpz[0]) + cpk[0][1] * ((double)mrb.y - cpz[1]) + cpk[0][2] * ((double)mrb.z - cpz[2]);
+		mrb.y = cpk[1][0] * ((double)mrb.x - cpz[0]) + cpk[1][1] * ((double)mrb.y - cpz[1]) + cpk[1][2] * ((double)mrb.z - cpz[2]);
+		mrb.z = cpk[2][0] * ((double)mrb.x - cpz[0]) + cpk[2][1] * ((double)mrb.y - cpz[1]) + cpk[2][2] * ((double)mrb.z - cpz[2]);
+	}
+
 	mrb.range_ga = (float)48.0;
 	mrb.scaling = _mag_range_scale;
 	mrb.temperature = _parent->_last_temperature;

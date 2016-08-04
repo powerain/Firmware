@@ -131,13 +131,14 @@
 #include <drivers/drv_accel.h>
 #include <drivers/drv_mag.h>
 #include <drivers/drv_baro.h>
-#include <crc32.h>
+//#include <crc32.h>
 /****************************************************************************/
 
 #include "logbuffer.h"
 #include "sdlog2_format.h"
 #include "sdlog2_messages.h"
 #include "sflib_api.h"
+#include "magcal.h"
 
 #include <drivers/drv_led.h>
 extern void led_toggle(int led);
@@ -147,6 +148,7 @@ extern void led_off(int led);
 #define MPU_DEVICE_PATH_ACCEL		"/dev/mpu9250_accel"
 #define MPU_DEVICE_PATH_GYRO		"/dev/mpu9250_gyro"
 #define MPU_DEVICE_PATH_MAG		"/dev/mpu9250_mag"
+#define D2R		0.017453292519943
 
 #define DEBUG_PRN
 #define PX4_EPOCH_SECS 1234567890L
@@ -623,17 +625,18 @@ int open_perf_file(const char* str)
 
 	return fd;
 }
-
+/*
 #pragma pack(push, 1)
 struct upload_data {
+	uint16_t	flag;
 	uint64_t	timestamp;
 	// float 	Quat0;
 	// float 	Quat1;
 	// float 	Quat2;
-	// float 	Quat3;
-	// float 	yaw;
-	// float 	pitch;
-	// float 	roll;
+	float 		quat[4];
+	float 		yaw;
+	float 		pitch;
+	float 		roll;
 	double		longitude;
 	double		latitude;
 	float		height;
@@ -641,22 +644,92 @@ struct upload_data {
 	float		vn;
 	float		vu;
 	uint8_t		id;
-	uint32_t	num;
+	uint16_t	num;
 	uint32_t	crc32;
 };
 #pragma pack(pop)
+*/
+#pragma pack(push, 1)
+struct upload_data {
+	uint8_t		sflag[7];
 
-#include "iniRD.h"
+	//uint8_t		type;
+	uint8_t		time1[3];
+	uint8_t		time2[3];
+	double		longitude;
+	double		latitude;
+	uint8_t		flag;
+	uint16_t	yaw;   //航向
+	uint16_t	mde;   //磁偏角
+	uint8_t		id;
+	uint16_t	seq;
+	uint8_t		pad[2];
+
+	uint8_t		crc;
+	uint8_t		eflag;
+};
+#pragma pack(pop)
+
+//polynomial: x^8 + x^2 + x^1 + x^0
+static uint8_t CRC_TABLE[256] =
+{
+    0x00, 0x07, 0x0E, 0x09, 0x1C, 0x1B, 0x12, 0x15,
+    0x38, 0x3F, 0x36, 0x31, 0x24, 0x23, 0x2A, 0x2D,
+    0x70, 0x77, 0x7E, 0x79, 0x6C, 0x6B, 0x62, 0x65,
+    0x48, 0x4F, 0x46, 0x41, 0x54, 0x53, 0x5A, 0x5D,
+    0xE0, 0xE7, 0xEE, 0xE9, 0xFC, 0xFB, 0xF2, 0xF5,
+    0xD8, 0xDF, 0xD6, 0xD1, 0xC4, 0xC3, 0xCA, 0xCD,
+    0x90, 0x97, 0x9E, 0x99, 0x8C, 0x8B, 0x82, 0x85,
+    0xA8, 0xAF, 0xA6, 0xA1, 0xB4, 0xB3, 0xBA, 0xBD,
+    0xC7, 0xC0, 0xC9, 0xCE, 0xDB, 0xDC, 0xD5, 0xD2,
+    0xFF, 0xF8, 0xF1, 0xF6, 0xE3, 0xE4, 0xED, 0xEA,
+    0xB7, 0xB0, 0xB9, 0xBE, 0xAB, 0xAC, 0xA5, 0xA2,
+    0x8F, 0x88, 0x81, 0x86, 0x93, 0x94, 0x9D, 0x9A,
+    0x27, 0x20, 0x29, 0x2E, 0x3B, 0x3C, 0x35, 0x32,
+    0x1F, 0x18, 0x11, 0x16, 0x03, 0x04, 0x0D, 0x0A,
+    0x57, 0x50, 0x59, 0x5E, 0x4B, 0x4C, 0x45, 0x42,
+    0x6F, 0x68, 0x61, 0x66, 0x73, 0x74, 0x7D, 0x7A,
+    0x89, 0x8E, 0x87, 0x80, 0x95, 0x92, 0x9B, 0x9C,
+    0xB1, 0xB6, 0xBF, 0xB8, 0xAD, 0xAA, 0xA3, 0xA4,
+    0xF9, 0xFE, 0xF7, 0xF0, 0xE5, 0xE2, 0xEB, 0xEC,
+    0xC1, 0xC6, 0xCF, 0xC8, 0xDD, 0xDA, 0xD3, 0xD4,
+    0x69, 0x6E, 0x67, 0x60, 0x75, 0x72, 0x7B, 0x7C,
+    0x51, 0x56, 0x5F, 0x58, 0x4D, 0x4A, 0x43, 0x44,
+    0x19, 0x1E, 0x17, 0x10, 0x05, 0x02, 0x0B, 0x0C,
+    0x21, 0x26, 0x2F, 0x28, 0x3D, 0x3A, 0x33, 0x34,
+    0x4E, 0x49, 0x40, 0x47, 0x52, 0x55, 0x5C, 0x5B,
+    0x76, 0x71, 0x78, 0x7F, 0x6A, 0x6D, 0x64, 0x63,
+    0x3E, 0x39, 0x30, 0x37, 0x22, 0x25, 0x2C, 0x2B,
+    0x06, 0x01, 0x08, 0x0F, 0x1A, 0x1D, 0x14, 0x13,
+    0xAE, 0xA9, 0xA0, 0xA7, 0xB2, 0xB5, 0xBC, 0xBB,
+    0x96, 0x91, 0x98, 0x9F, 0x8A, 0x8D, 0x84, 0x83,
+    0xDE, 0xD9, 0xD0, 0xD7, 0xC2, 0xC5, 0xCC, 0xCB,
+    0xE6, 0xE1, 0xE8, 0xEF, 0xFA, 0xFD, 0xF4, 0xF3
+};
+//CRC校验
+uint8_t GetCheckbyte(const uint8_t * p_char, uint32_t datanum);
+uint8_t GetCheckbyte(const uint8_t * p_char, uint32_t datanum)
+{
+    uint8_t crc = 0;
+
+    while( datanum-- )
+	{
+		crc = CRC_TABLE[crc ^ *p_char++];
+	}
+
+	return crc;
+}
+
+//#include "iniRD.h"
+#include "wifi_usr.h"
 static int possender_thread(int argc, char *argv[])
 {
-	char *para = GetIniKeyString("WMODE","mode","/fs/microsd/USRwifi.ini");
-	if (para != NULL)
-		printf("%s\n", para);
 	struct upload_data	buf_upload;
 	struct noitom_pos_s buf_pos;
 	//memset(&buf_pos, 0, sizeof(buf_pos));
 	int ret = 0;
-	uint32_t num = 0;
+	//uint32_t num = 0;
+	uint16_t num = 0;
 
 	int pos_sub = orb_subscribe(ORB_ID(noitom_pos));
 	px4_pollfd_struct_t fds[] =
@@ -666,6 +739,7 @@ static int possender_thread(int argc, char *argv[])
 	
 	int fd_wifi;
 	fd_wifi = open("/dev/ttyS0",  O_RDWR | O_NONBLOCK | O_NOCTTY);
+	//fd_wifi = open("/dev/ttyS0",  O_RDWR | O_NOCTTY);
 	if(fd_wifi < 0)
 	{
 		printf("ERROR ttyS open fail\n");
@@ -680,7 +754,8 @@ static int possender_thread(int argc, char *argv[])
 		goto cleanup;
 	}
 	/* Set baud rate */
-	if (cfsetispeed(&uart_config, B57600) < 0 || cfsetospeed(&uart_config, B57600) < 0) {
+	//if (cfsetispeed(&uart_config, B57600) < 0 || cfsetospeed(&uart_config, B57600) < 0) {
+	if (cfsetispeed(&uart_config, B115200) < 0 || cfsetospeed(&uart_config, B115200) < 0) {
 		printf("ERROR setting termios config\n");
 		ret = -3;
 		goto cleanup;
@@ -693,20 +768,27 @@ static int possender_thread(int argc, char *argv[])
 		goto cleanup;
 	}
 
-	//uint8_t sample_uart2[50] = {'U', 'A', 'R', 'T', '1', ' ', '#', '\r', '\n'};
-
+	//uint8_t sample_uart2[100];
+	wifi_init(fd_wifi);
 	while(true)
 	{
 		/* wait for sensor update of 1 file descriptor for 1000 ms (1 second) */
 		ret = px4_poll(fds, 1, 1000);
 		if(ret > 0)
 		{
-			num++;
+			//num++;
 			memset(&buf_upload, 0, sizeof(buf_upload));
 			memset(&buf_pos, 0, sizeof(buf_pos));
 			orb_copy(ORB_ID(noitom_pos), pos_sub, &buf_pos);
-			//printf("POS Time stamp is: %lld\n", buf_pos.timestamp);
-			buf_upload.timestamp	= buf_pos.timestamp;
+/* 			buf_upload.timestamp	= buf_pos.timestamp;
+			buf_upload.flag			= 0x55AA;
+			buf_upload.quat[0]		= buf_pos.quat0;
+			buf_upload.quat[1]		= buf_pos.quat1;
+			buf_upload.quat[2]		= buf_pos.quat2;
+			buf_upload.quat[3]		= buf_pos.quat3;
+			buf_upload.yaw			= buf_pos.yaw;
+			buf_upload.pitch		= buf_pos.pitch;
+			buf_upload.roll			= buf_pos.roll;
 			buf_upload.longitude	= buf_pos.lon;
 			buf_upload.latitude		= buf_pos.lat;
 			buf_upload.height		= buf_pos.height;
@@ -715,16 +797,40 @@ static int possender_thread(int argc, char *argv[])
 			buf_upload.vu			= buf_pos.vu;
 			buf_upload.id			= 0;
 			buf_upload.num			= num;
-			buf_upload.crc32		= crc32((uint8_t *)&buf_upload, sizeof(buf_upload) - sizeof(buf_upload.crc32));
+			buf_upload.crc32		= crc32((uint8_t *)&buf_upload, sizeof(buf_upload) - sizeof(buf_upload.crc32)); */
 
-			//sprintf((char *)sample_uart2, "POS Time stamp is: %lld\r\n", buf_pos.timestamp);
-			//printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
+			{//
+			buf_upload.sflag[0] = 0xFD;
+			buf_upload.sflag[1] = 0x04;
+			buf_upload.sflag[2] = 0x5E;
+			buf_upload.sflag[3] = 0x13;
+			buf_upload.sflag[4] = 0xA0;
+			buf_upload.sflag[5] = 0x7D;
+			buf_upload.sflag[6] = sizeof(buf_upload);
+
+			//buf_upload.type		= 0xF9;
+			buf_upload.longitude	= buf_pos.lon;
+			buf_upload.latitude		= buf_pos.lat;
+			buf_upload.id			= node_id;
+			buf_upload.seq			= num;
+			buf_upload.crc			= GetCheckbyte((uint8_t *)&buf_upload, sizeof(buf_upload) - sizeof(buf_upload.crc) - sizeof(buf_upload.eflag));
+			buf_upload.eflag		= 0xFE;
+			}//
+			num++;
+
 			write(fd_wifi, (uint8_t *)&buf_upload, sizeof(buf_upload));
-			printf("%d, lon:%8.4f, lat:%8.4f, height:%8.4f\n", num, buf_pos.lon, buf_pos.lat, (double)buf_pos.height);
+			printf("%10.6f, %10.6f, %x\n",
+				buf_upload.longitude,
+				buf_upload.latitude,
+				buf_upload.crc);
+
+			/*sprintf((char *)sample_uart2, "%d, yaw:%8.5f, pit:%8.5f, rol:%8.5f, lon:%8.5f, lat:%8.5f, %8.5f\n", 
+				num,(double)buf_pos.yaw, (double)buf_pos.pitch, (double)buf_pos.roll, 
+				buf_pos.lon, buf_pos.lat, (double)buf_pos.height);
+			write(fd_wifi, (uint8_t *)sample_uart2, sizeof(sample_uart2)); */
 		}
 
-		//usleep(60000);
-		//printf("possender_thread\n");
+		usleep(60000);
 	}
 
 cleanup:
@@ -1097,6 +1203,8 @@ struct mag_report buf_mag;
 struct OutputData out_data;
 int sdlog2_thread_main(int argc, char *argv[])
 {
+	//FIXME
+	mag_cali_init();
 	//fun();
 	//powerain
 	SFLibInstance sflib_in;
@@ -1403,16 +1511,14 @@ int sdlog2_thread_main(int argc, char *argv[])
 //	uint64_t t0, t1, t2, t3, t4, t5, t6, t7, t8;
 //	t0 = t1 = t2 = t3 = t4 = t5 = t6 = t7 = t8 = 0;
 
+	// FIXME
+	usleep(20000);
 	int c = 0;
 	bool gps_ok =  false;
 	while (!main_thread_should_exit) 
 	{
 		uint64_t t0, t1;
-//		t0 = hrt_absolute_time();
-//		usleep(8970); //old
-//		usleep(8920);
-//		usleep(9000);
-
+		//usleep(8970); //old
 re_in:
 		t0 = hrt_absolute_time();
 
@@ -1422,29 +1528,13 @@ re_in:
 
 		if(ret > 0)
 		{
-			memset(&buf_mag, 0, sizeof(buf_mag));
-			memset(&buf_acc, 0, sizeof(buf_acc));
-			memset(&buf_gyr, 0, sizeof(buf_gyr));
-			memset(&log_msg.body.log_IMU, 0, sizeof(log_msg.body.log_IMU));
-
-			log_msg.msg_type = LOG_IMU_MSG;
-
-			//log_msg.body.log_IMU.gyr_time = hrt_absolute_time();
-			//printf("acc dt %lld, gyr dt %lld %lld\n", buf_acc.integral_dt, buf_gyr.integral_dt, t0);
 			if (fds[1].revents & POLLIN)
 			{
+				memset(&buf_mag, 0, sizeof(buf_mag));
 				orb_copy(ORB_ID(sensor_mag), mag_sub, &buf_mag);
-				//printf("ORB Time stamp is: %lld\n", buf_mag.timestamp);
+
 				//float len = sqrtf(buf_mag.x * buf_mag.x + buf_mag.y * buf_mag.y + buf_mag.z * buf_mag.z);
 				//if (len > 0.25f && len < 3.0f)
-				/*{
-					log_msg.body.log_IMU.mag_x		= buf_mag.x;
-					log_msg.body.log_IMU.mag_y		= buf_mag.y;
-					log_msg.body.log_IMU.mag_z		= buf_mag.z;
-					log_msg.body.log_IMU.mag_time	= buf_mag.timestamp;
-					//printf("%f, %f, %f", (double)buf_mag.x, (double)buf_mag.y, (double)buf_mag.z);
-				}*/
-
 				in_imu.Mag_measure[0] = buf_mag.x;
 				in_imu.Mag_measure[1] = buf_mag.y;
 				in_imu.Mag_measure[2] = buf_mag.z;
@@ -1454,9 +1544,13 @@ re_in:
 
 			if (fds[0].revents & POLLIN)
 			{
+				memset(&buf_acc, 0, sizeof(buf_acc));
+				memset(&buf_gyr, 0, sizeof(buf_gyr));
+				memset(&log_msg.body.log_IMU, 0, sizeof(log_msg.body.log_IMU));
+
 				orb_copy(ORB_ID(sensor_accel), acc_sub, &buf_acc);
 				orb_copy(ORB_ID(sensor_gyro), gyr_sub, &buf_gyr);
-
+				log_msg.msg_type = LOG_IMU_MSG;
 				log_msg.body.log_IMU.acc_x		= buf_acc.x;
 				log_msg.body.log_IMU.acc_y		= buf_acc.y;
 				log_msg.body.log_IMU.acc_z		= buf_acc.z;
@@ -1475,18 +1569,57 @@ re_in:
 					log_msg.body.log_IMU.mag_z		= in_imu.Mag_measure[2];
 					log_msg.body.log_IMU.mag_time	= time_mag;
 				}
+				LOGBUFFER_WRITE_AND_COUNT(IMU);
 
 				if (init_geo)
 				{
 					in_imu.timestamp_us					= buf_acc.timestamp;
-					in_imu.IncrementAngle_Measure[0]	= buf_gyr.x_integral;
-					in_imu.IncrementAngle_Measure[1]	= buf_gyr.y_integral;
-					in_imu.IncrementAngle_Measure[2]	= buf_gyr.z_integral;
+					in_imu.IncrementAngle_Measure[0]	= (double)buf_gyr.x_integral / D2R;
+					in_imu.IncrementAngle_Measure[1]	= (double)buf_gyr.y_integral / D2R;
+					in_imu.IncrementAngle_Measure[2]	= (double)buf_gyr.z_integral / D2R;
 					in_imu.IncrementVel_Measure[0]		= buf_acc.x_integral;
 					in_imu.IncrementVel_Measure[1]		= buf_acc.y_integral;
 					in_imu.IncrementVel_Measure[2]		= buf_acc.z_integral;
 
 					CallSFImuProc(&sflib_in, &in_imu);
+
+					if (GetSFResult(&sflib_in, &out_data))
+					{
+						memset(&log_msg.body.log_SFO, 0, sizeof(log_msg.body.log_SFO));
+						log_msg.msg_type					= LOG_SFO_MSG;
+						log_msg.body.log_SFO.timestamp_us	= out_data.timestamp_us;
+						log_msg.body.log_SFO.Quat0			= out_data.Quat[0];
+						log_msg.body.log_SFO.Quat1			= out_data.Quat[1];
+						log_msg.body.log_SFO.Quat2			= out_data.Quat[2];
+						log_msg.body.log_SFO.Quat3			= out_data.Quat[3];
+						log_msg.body.log_SFO.yaw			= out_data.yaw;
+						log_msg.body.log_SFO.pitch			= out_data.pitch;
+						log_msg.body.log_SFO.roll			= out_data.roll;
+						log_msg.body.log_SFO.longitude		= (int64_t)(out_data.longitude * 1E7);
+						log_msg.body.log_SFO.latitude		= (int64_t)(out_data.latitude * 1E7);
+						log_msg.body.log_SFO.height			= out_data.height;
+						log_msg.body.log_SFO.ve				= out_data.ve;
+						log_msg.body.log_SFO.vn				= out_data.vn;
+						log_msg.body.log_SFO.vu				= out_data.vu;
+						LOGBUFFER_WRITE_AND_COUNT(SFO);
+
+						memset(&buf_pos, 0, sizeof(buf_pos));
+						buf_pos.timestamp	= out_data.timestamp_us;
+						buf_pos.quat0		= out_data.Quat[0];
+						buf_pos.quat1		= out_data.Quat[1];
+						buf_pos.quat2		= out_data.Quat[2];
+						buf_pos.quat3		= out_data.Quat[3];
+						buf_pos.yaw			= out_data.yaw;
+						buf_pos.pitch		= out_data.pitch;
+						buf_pos.roll		= out_data.roll;
+						buf_pos.lon			= out_data.longitude;
+						buf_pos.lat			= out_data.latitude;
+						buf_pos.height		= out_data.height;
+						buf_pos.ve			= out_data.ve;
+						buf_pos.vn			= out_data.vn;
+						buf_pos.vu			= out_data.vu;
+						orb_publish(ORB_ID(noitom_pos), pos_pub, &buf_pos);
+					}
 				}
 
 				in_imu.magdata_new = false;
@@ -1497,7 +1630,6 @@ re_in:
 					(double)log_msg.body.log_IMU.gyr_x,
 					(double)log_msg.body.log_IMU.gyr_y,
 					(double)log_msg.body.log_IMU.gyr_z); */
-				LOGBUFFER_WRITE_AND_COUNT(IMU);
 			}
 
 		} else if(ret == 0) //time out
@@ -1512,30 +1644,20 @@ re_in:
 		}
 
 		if (!logging_enabled) {
-//FIXME
-//			continue;
+			//FIXME
+			//continue;
 		}
 
-//printf("Time stamp is: %lld\t%lld\t%lld\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
-#undef DEBUG_PRN
-//#define DEBUG_PRN
-#ifdef DEBUG_PRN
-		printf("\tACCEL accel: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_acc.x)), *((int *)&(buf_acc.y)), *((int *)&(buf_acc.z)));
-		printf("\tGYRO rates: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_gyr.x)), *((int *)&(buf_gyr.y)), *((int *)&(buf_gyr.z)));
-		printf("\tMAG values: x:%X\ty:%X\tz:%X\n", *((int *)&(buf_mag.x)), *((int *)&(buf_mag.y)), *((int *)&(buf_mag.z)));
-		printf("\tTime stamp is: %llX\t%llX\t%llX\n", log_msg.body.log_IMU.acc_time, log_msg.body.log_IMU.gyr_time, log_msg.body.log_IMU.mag_time);
-#endif
-
-//t3 = hrt_absolute_time();
+		//t3 = hrt_absolute_time();
 		memset(&buf_gps_pos, 0, sizeof(buf_gps_pos));
 		gps_pos_updated = copy_if_updated(ORB_ID(vehicle_gps_position), &gps_sub, &buf_gps_pos);
 		if (gps_pos_updated) 
 		{
 #ifdef DEBUG_PRN
-			printf("\tGPS Time stamp is: %llX\tUTC Time is: %llX\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
-			printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
+			//printf("\tGPS Time stamp is: %llX\tUTC Time is: %llX\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
+			//printf("\tGPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
 #endif			
-			if (buf_gps_pos.satellites_used >= 4)
+			if (buf_gps_pos.satellites_used >= 6)
 			{
 				gps_ok = true;
 			} else
@@ -1559,13 +1681,6 @@ re_in:
 				LOGBUFFER_WRITE_AND_COUNT(GPS);
 			}
 
-			if (!init_geo && gps_ok)
-			{
-				init_geo = InitSFLib_Geo(&sflib_in, (double)(buf_gps_pos.lon * 1E-7),
-					(double)(buf_gps_pos.lat * 1E-7), (float)(buf_gps_pos.alt * 1E-3),
-					buf_gps_pos.timestamp_position);
-			}
-
 			if (init_geo)
 			{
 				in_gps.timestamp_us	= buf_gps_pos.timestamp_position;
@@ -1574,19 +1689,22 @@ re_in:
 				in_gps.height		= (float)(buf_gps_pos.alt * 1E-3);
 				in_gps.ve			= buf_gps_pos.vel_e_m_s;
 				in_gps.vn			= buf_gps_pos.vel_n_m_s;
-				in_gps.vu			= buf_gps_pos.vel_d_m_s;
+				in_gps.vu			= -buf_gps_pos.vel_d_m_s;
 				in_gps.sat_num		= buf_gps_pos.satellites_used;
-				in_gps.valid		= (buf_gps_pos.satellites_used > 0);
+				in_gps.valid		= gps_ok;
 
 				CallSFGpsProc(&sflib_in, &in_gps);
 			}
+
+			if (!init_geo && gps_ok)
+			{
+				init_geo = InitSFLib_Geo(&sflib_in, (double)(buf_gps_pos.lon * 1E-7),
+					(double)(buf_gps_pos.lat * 1E-7), (float)(buf_gps_pos.alt * 1E-3),
+					buf_gps_pos.timestamp_position);
+			}
 		}
-		else
-		{
-#ifdef DEBUG_PRN
-			printf("\tGPS pos is not update\n");
-#endif	
-		}
+
+		/* Flash the led, Green if GPS is OK, otherwise Blue */
 		c++;
 		if (c % 50 == 0)
 		{
@@ -1600,55 +1718,27 @@ re_in:
 				led_toggle(3);
 			}
 			c = 0;
-
-			if (init_geo)
-			{
-				if (GetSFResult(&sflib_in, &out_data))
-				{
-					memset(&log_msg.body.log_SFO, 0, sizeof(log_msg.body.log_SFO));
-					log_msg.msg_type					= LOG_SFO_MSG;
-					log_msg.body.log_SFO.timestamp_us	= out_data.timestamp_us;
-					log_msg.body.log_SFO.Quat0			= out_data.Quat[0];
-					log_msg.body.log_SFO.Quat1			= out_data.Quat[1];
-					log_msg.body.log_SFO.Quat2			= out_data.Quat[2];
-					log_msg.body.log_SFO.Quat3			= out_data.Quat[3];
-					log_msg.body.log_SFO.yaw			= out_data.yaw;
-					log_msg.body.log_SFO.pitch			= out_data.pitch;
-					log_msg.body.log_SFO.roll			= out_data.roll;
-					log_msg.body.log_SFO.longitude		= (float)out_data.longitude;
-					log_msg.body.log_SFO.latitude		= (float)out_data.latitude;
-					log_msg.body.log_SFO.height			= out_data.height;
-					log_msg.body.log_SFO.ve				= out_data.ve;
-					log_msg.body.log_SFO.vn				= out_data.vn;
-					log_msg.body.log_SFO.vu				= out_data.vu;
-					LOGBUFFER_WRITE_AND_COUNT(SFO);
-
-					memset(&buf_pos, 0, sizeof(buf_pos));
-					buf_pos.timestamp	= out_data.timestamp_us;
-					buf_pos.lon			= out_data.longitude;
-					buf_pos.lat			= out_data.latitude;
-					buf_pos.height		= out_data.height;
-					buf_pos.ve			= out_data.ve;
-					buf_pos.vn			= out_data.vn;
-					buf_pos.vu			= out_data.vu;
-					orb_publish(ORB_ID(noitom_pos), pos_pub, &buf_pos);
-				}
-			}
 		}
 
-		/*FIXME:to publish the position here*/
-		//{
-			//buf_pos.timestamp = buf_acc.timestamp;
-			//orb_publish(ORB_ID(noitom_pos), pos_pub, &buf_pos);
-		//}
+		/*************************************************************/
+		//构造假数据，测试使用
+		/*if (!init_geo)
+		{
+				init_geo = InitSFLib_Geo(&sflib_in, 
+										(double)(1163653909 * 1E-7),
+										(double)(399524954 * 1E-7),
+										(float)(44460 * 1E-3),
+										hrt_absolute_time());
+		}*/
+		/*************************************************************/
 
 		//FIXME 这一部分去掉
 		if ((poll_counter + 1) % poll_to_logging_factor == 0) {
 			poll_counter = 0;
 		} else {
-			// copy topic
+			//copy topic
 			poll_counter++;
-//			continue;
+			//continue;
 		}
 
 		pthread_mutex_lock(&logbuffer_mutex);
@@ -1662,14 +1752,8 @@ re_in:
 		/* unlock, now the writer thread may run */
 		pthread_mutex_unlock(&logbuffer_mutex);
 
-//#ifdef DEBUG_PRN
-#if 0
-//printf("GPS Time stamp is: %lld\tUTC Time is: %lld\n", buf_gps_pos.timestamp_position, buf_gps_pos.time_utc_usec);
-//printf("GPS Pos is: lat:%X\tlon:%X\t num of sat:%X\n", buf_gps_pos.lat, buf_gps_pos.lon, buf_gps_pos.satellites_used);
-#endif
 		int t = 2000;
 		//int t = 500000;
-
 		t1 = hrt_absolute_time();
 		if ((t1 - t0) < t)
 			usleep(t - (t1 - t0));
